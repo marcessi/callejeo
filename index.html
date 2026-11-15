@@ -58,6 +58,7 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .pick b{font-family:var(--display);font-size:13px;color:var(--muted);font-weight:500;padding:0 4px}
 .pick button{padding:10px 12px;border-radius:10px;background:var(--surface-2);font-weight:600;font-size:15px}
 
+@media (prefers-color-scheme:dark){.leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.7)}}
 /* Marcadores */
 .pin{width:30px;height:30px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);background:var(--primary);border:3px solid var(--surface);box-shadow:0 3px 8px rgba(0,0,0,.35);display:grid;place-items:center}
 .pin span{transform:rotate(45deg);color:var(--on-primary);font:700 12px var(--display)}
@@ -277,8 +278,8 @@ const map = L.map('map',{zoomControl:false,attributionControl:true}).setView(vie
 map.attributionControl.setPrefix(false);
 let tiles;
 function setTiles(){ if(tiles) tiles.remove();
-  tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/'+(dark.matches?'dark_all':'rastertiles/voyager')+'/{z}/{x}/{y}{r}.png',
-    {maxZoom:20,subdomains:'abcd',attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a>'}).addTo(map); }
+  tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map); }
 setTiles(); dark.addEventListener('change',setTiles);
 map.on('moveend',()=>{const c=map.getCenter();store.set('view',{c:[c.lat,c.lng],z:map.getZoom()});});
 const gMarkers = L.layerGroup().addTo(map), gRoutes = L.layerGroup().addTo(map), gMe = L.layerGroup().addTo(map);
@@ -645,7 +646,7 @@ function paintNav(){ const r=N.route, left=Math.max(0,r.dist-N.along), min=left/
   $('neta').textContent=new Date(Date.now()+min*60000).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}); }
 function onPos(pos){
   if(S.mode!=='nav'||N.done) return; const p=[pos.coords.latitude,pos.coords.longitude], r=N.route;
-  showMe(p,pos.coords.accuracy); if(N.follow) map.setView(p,Math.max(map.getZoom(),17),{animate:true});
+  showMe(p,pos.coords.accuracy); if(N.follow) map.setView(p,Math.min(19,Math.max(map.getZoom(),17)),{animate:true});
   let s=snap(p,N.idx-8,N.idx+120); if(s.d>60){const g=snap(p,0,N.xy.length); if(g.d<s.d-25) s=g;}
   const tol=Math.max(45,Math.min(90,(pos.coords.accuracy||0)*1.5));
   if(s.d>tol){ N.off++; if(N.off>=3){ $('navtop').classList.add('off'); $('nd').textContent=fmtKm(s.d); $('nt').textContent='Te has salido de la ruta. Vuelve a la línea marcada.';
