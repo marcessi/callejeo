@@ -75,9 +75,8 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 #grab{flex:none;width:100%;padding:8px 20px 6px;display:flex;flex-direction:column;align-items:center;gap:8px;touch-action:none}
 #grab>i{width:40px;height:5px;border-radius:3px;background:var(--line)}
 .head{width:100%;display:flex;align-items:center;gap:10px}
-.logo{flex:none;width:30px;height:30px;border-radius:9px;background:var(--primary);display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0 6px}
-.logo i{display:block;height:5px;border-radius:2px;background:var(--on-primary);width:auto}
-.logo i+i{background:var(--mark)}
+.logo{flex:none;width:34px;height:34px;border-radius:10px;background:linear-gradient(#1F4A3A,#0D1F19);overflow:hidden}
+.logo svg{display:block;width:100%;height:100%}
 .head h1{font-size:22px;font-weight:700;flex:1}
 .head .ghost{font-size:14px;font-weight:600;color:var(--muted);padding:8px 10px;border-radius:10px}
 #body{overflow-y:auto;padding:6px 16px 16px;display:flex;flex-direction:column;gap:14px;-webkit-overflow-scrolling:touch}
@@ -216,7 +215,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 <section id="sheet" aria-label="Planificador">
   <button id="grab" aria-label="Mostrar u ocultar el panel">
     <i></i>
-    <div class="head"><span class="logo" aria-hidden="true"><i></i><i></i></span><h1 id="title">Callejeo</h1><span class="ghost" id="back" role="button" tabindex="0" hidden>Cambiar</span></div>
+    <div class="head"><span class="logo" aria-hidden="true"><svg viewBox="0 0 1024 1024"><path d="M300 770C600 770 760 640 560 560C360 480 400 330 690 340" fill="none" stroke="#F2B705" stroke-width="84" stroke-linecap="round"/><circle cx="300" cy="770" r="74" fill="#fff"/><circle cx="300" cy="770" r="30" fill="#17382C"/><path d="M586 236a104 104 0 1 1 208 0c0 60-60 110-104 190c-44-80-104-130-104-190z" fill="#fff"/><circle cx="690" cy="236" r="42" fill="#17382C"/></svg></span><h1 id="title">Callejeo</h1><span class="ghost" id="back" role="button" tabindex="0" hidden>Cambiar</span></div>
   </button>
   <div id="body"></div>
 </section>
