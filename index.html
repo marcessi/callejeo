@@ -11,9 +11,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Callejeo">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest?v=2">
+<link rel="apple-touch-icon" href="apple-touch-icon-v2.png">
+<link rel="icon" href="icon-192-v2.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -147,6 +147,8 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .pop img{width:180px;max-width:100%;border-radius:10px;display:block;margin-bottom:6px}
 .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .actions .cta{font-size:16px;padding:14px 8px}
+.dock{position:sticky;bottom:-16px;margin:0 -16px -16px;padding:10px 16px 16px;background:var(--surface);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px;z-index:2}
+.dock small{text-align:center;color:var(--muted);font-size:12px}
 .sub{display:flex;gap:8px;justify-content:space-between}
 .saved{display:flex;flex-direction:column;gap:6px}
 .saved h2{font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;font-family:var(--body)}
@@ -530,11 +532,12 @@ function render(){
           <span class="mid"><h3>${esc(x.title)}</h3><p>${names.length?'Pasa por '+esc(names.join(', ')):x.streets.length?'Por '+esc(x.streets.join(' y ')):'Por caminos sin nombre'}</p>
           <span class="tags">${x.direct||x.saved?'':`<span class="tag ${okd?'ok':''}">${dtxt}</span>`}
           ${(x.hl||[]).length?`<span class="tag ok">${x.hl.length} ${x.hl.length===1?'sitio':'sitios'} de interés</span>`:''}
-          ${x.saved?'':rt<0.06?'<span class="tag ok">Sin repetir calles</span>':`<span class="tag">Repite un ${Math.round(rt*100)} %</span>`}</span></span>
+          ${x.saved||rt<0.06?'':`<span class="tag">Repite un ${Math.round(rt*100)} %</span>`}</span></span>
           <span class="big"><b class="num">${fmtMin(x.min)}</b><small class="num">${fmtKm(x.dist)}</small></span></button>`;}).join('')}</div>
       ${(r.hl||[]).some(h=>h.img)?`<h2 class="phh">En el camino</h2><div class="photos">${r.hl.map((h,i)=>h.img?`<button class="ph" data-hl="${i}"><img loading="lazy" src="${esc(h.img)}" alt=""><span>${esc(h.name)}</span></button>`:'').join('')}</div>`:''}
-      <div class="actions"><button class="cta" id="follow">Seguir aquí</button><a class="cta alt" id="gm" href="${gmapsUrl(r)}" target="_blank" rel="noopener" style="text-decoration:none">Google Maps</a></div>
-      <div class="sub"><button class="chipbtn" id="more" ${S.busy?'disabled':''}>${S.busy?'Buscando…':'↻ Otras propuestas'}</button><button class="chipbtn" id="save">☆ Guardar</button></div>`;
+      <div class="sub"><button class="chipbtn" id="more" ${S.busy?'disabled':''}>${S.busy?'Buscando…':'↻ Otras propuestas'}</button><button class="chipbtn" id="save">☆ Guardar</button></div>
+      <div class="dock"><div class="actions"><button class="cta" id="follow">▶ Empezar paseo</button><a class="cta alt" id="gm" href="${gmapsUrl(r)}" target="_blank" rel="noopener" style="text-decoration:none">Google Maps</a></div>
+      <small>Empezar paseo te guía aquí con tu GPS · ${esc(r.title)}</small></div>`;
   }
 }
 $('body').addEventListener('click',e=>{
@@ -630,13 +633,14 @@ function say(t){ if(!N.voice||!('speechSynthesis' in window)) return; try{const 
 function startNav(){
   const r=S.routes[S.sel]; if(!r) return;
   if(!navigator.geolocation){toast('Este navegador no da acceso al GPS. Usa el botón de Google Maps.');return;}
-  Object.assign(N,{route:r,xy:r.coords.map(c=>toXY(c,r.coords[0][0])),idx:0,along:0,off:0,follow:true,said:-1,t0:Date.now(),done:false});
+  Object.assign(N,{route:r,xy:r.coords.map(c=>toXY(c,r.coords[0][0])),idx:0,along:0,off:0,follow:true,said:-1,t0:Date.now(),done:false,started:false,fix:false});
+  clearTimeout(N.gt); N.gt=setTimeout(()=>{ if(S.mode==='nav'&&!N.fix) $('nt').textContent='Aún no llega señal GPS. Comprueba que la ubicación está permitida para esta app y sal a cielo abierto.'; },12000);
   S.routes=[r]; S.sel=0; S.mode='nav'; render(); drawMarkers(); drawRoutes(false);
   $('ngm').href=gmapsUrl(r); $('nprog').style.setProperty('--c',r.color); $('nprog').parentNode.style.setProperty('--c',r.color);
   $('nvoice').setAttribute('aria-pressed',N.voice); $('nrec').setAttribute('aria-pressed','true'); $('navtop').classList.remove('off');
   $('nd').textContent='—'; $('nt').textContent='Buscando tu posición…'; paintNav();
   map.setView(r.coords[0],17); wake();
-  N.watch=navigator.geolocation.watchPosition(onPos,err=>{ if(err.code===1){toast('Sin permiso de ubicación no puedo guiarte. Actívalo o usa Google Maps.',6000);} },{enableHighAccuracy:true,maximumAge:2000,timeout:20000});
+  N.watch=navigator.geolocation.watchPosition(onPos,err=>{ if(err.code===1){$('nt').textContent='Ubicación denegada. Actívala en Ajustes > Privacidad > Localización > Sitios web de Safari, o usa Google Maps.';toast('Sin permiso de ubicación no puedo guiarte.',6000);} },{enableHighAccuracy:true,maximumAge:2000,timeout:20000});
 }
 function stopNav(){ if(N.watch!=null) navigator.geolocation.clearWatch(N.watch); N.watch=null; if(N.lock){N.lock.release().catch(()=>{});N.lock=null;}
   try{speechSynthesis.cancel();}catch(e){} S.mode='results'; render(); drawMarkers(); drawRoutes(true); }
@@ -645,9 +649,11 @@ function paintNav(){ const r=N.route, left=Math.max(0,r.dist-N.along), min=left/
   $('neta').textContent=new Date(Date.now()+min*60000).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}); }
 function onPos(pos){
   if(S.mode!=='nav'||N.done) return; const p=[pos.coords.latitude,pos.coords.longitude], r=N.route;
-  showMe(p,pos.coords.accuracy); if(N.follow) map.setView(p,Math.min(19,Math.max(map.getZoom(),17)),{animate:true});
+  N.fix=true; showMe(p,pos.coords.accuracy); if(N.follow) map.setView(p,Math.min(19,Math.max(map.getZoom(),17)),{animate:true});
   let s=snap(p,N.idx-8,N.idx+120); if(s.d>60){const g=snap(p,0,N.xy.length); if(g.d<s.d-25) s=g;}
   const tol=Math.max(45,Math.min(90,(pos.coords.accuracy||0)*1.5));
+  if(s.d>tol&&!N.started){ $('nd').textContent=fmtKm(s.d); $('nt').textContent='Camina hasta la línea marcada para empezar el paseo'; $('narrow').style.transform='rotate(0deg)'; return; }
+  N.started=true;
   if(s.d>tol){ N.off++; if(N.off>=3){ $('navtop').classList.add('off'); $('nd').textContent=fmtKm(s.d); $('nt').textContent='Te has salido de la ruta. Vuelve a la línea marcada.';
       $('narrow').style.transform='rotate(180deg)'; if(N.off===3) say('Te has salido de la ruta'); } return; }
   N.off=0; $('navtop').classList.remove('off'); N.idx=s.i; N.along=s.along; paintNav();
