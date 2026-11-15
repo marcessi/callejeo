@@ -69,7 +69,7 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 #nfix{flex:none;background:#fff;color:#14231D;font-weight:700;padding:11px 12px;border-radius:12px;font-size:14px}
 .stat{display:flex;align-items:center;gap:10px;background:var(--surface-2);border-radius:14px;padding:10px 14px;font-size:14px;font-weight:600}
 .stat b{font:700 18px var(--display)} .stat span{color:var(--muted);font-weight:500}
-.mood{display:flex;gap:8px;align-items:center;flex-wrap:wrap} .mood>span{font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+.mood{display:flex;gap:8px;align-items:center;flex-wrap:wrap} .mood>span{margin-right:2px}
 /* Marcadores */
 .pin{width:30px;height:30px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);background:var(--primary);border:3px solid var(--surface);box-shadow:0 3px 8px rgba(0,0,0,.35);display:grid;place-items:center}
 .pin span{transform:rotate(45deg);color:var(--on-primary);font:700 12px var(--display)}
@@ -81,7 +81,7 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 
 /* Hoja */
 #sheet{position:absolute;left:0;right:0;bottom:0;z-index:500;background:var(--surface);border-radius:24px 24px 0 0;box-shadow:var(--shadow);
-  max-height:72%;display:flex;flex-direction:column;transition:transform .28s cubic-bezier(.2,.8,.2,1);padding-bottom:var(--sab)}
+  max-height:80%;display:flex;flex-direction:column;transition:transform .28s cubic-bezier(.2,.8,.2,1);padding-bottom:var(--sab)}
 #sheet.collapsed{transform:translateY(calc(100% - 76px - var(--sab)))}
 #grab{flex:none;width:100%;padding:8px 20px 6px;display:flex;flex-direction:column;align-items:center;gap:8px;touch-action:none}
 #grab>i{width:40px;height:5px;border-radius:3px;background:var(--line)}
@@ -89,7 +89,7 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .logo{flex:none;width:34px;height:34px;border-radius:10px;background:linear-gradient(#1F4A3A,#0D1F19);overflow:hidden}
 .logo svg{display:block;width:100%;height:100%}
 .head h1{font-size:22px;font-weight:700;flex:1}
-.head .ghost{font-size:14px;font-weight:600;color:var(--muted);padding:8px 10px;border-radius:10px}
+.head .ghost{font-size:14px;font-weight:600;color:var(--ink);padding:8px 12px;border-radius:999px;background:var(--surface-2);white-space:nowrap}
 #body{overflow-y:auto;padding:6px 16px 16px;display:flex;flex-direction:column;gap:14px;-webkit-overflow-scrolling:touch}
 
 .stops{background:var(--surface-2);border-radius:18px;padding:4px 4px 4px 0;display:flex;flex-direction:column}
@@ -134,6 +134,28 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .hint{font-size:13px;color:var(--muted);margin:0}
 .note{font-size:14px;background:color-mix(in srgb,var(--mark) 22%,var(--surface));border-radius:12px;padding:10px 12px;margin:0}
 
+.eb{font:600 12px var(--body);color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:0}
+.chipbtn.out{background:transparent;border:1.5px solid var(--line);padding:8px 12px}
+.box{border:1.5px solid var(--line);border-radius:18px;padding:14px 14px 12px}
+.pace{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.seg.sm button{padding:6px 11px;font-size:13px}
+.mchip{padding:8px 13px 8px 10px;border-radius:999px;border:1.5px solid var(--line);font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:7px}
+.mchip i{width:10px;height:10px;border-radius:50%;background:var(--mc)}
+.mchip[aria-pressed="true"]{border-color:var(--mc);background:color-mix(in srgb,var(--mc) 15%,var(--surface))}
+.card.mini{padding:11px 14px;align-items:center;border-width:1.5px;border-radius:14px}
+.card.mini h3{font-size:15px;font-weight:600;font-family:var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:0}
+.card.mini .dotc{width:12px;height:12px;border-radius:50%;background:var(--c);flex:none}
+.card.mini .r{flex:none;font-weight:600;font-size:14px;color:var(--muted)}
+.tag.star{background:var(--mark);color:#14231D}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile{background:var(--surface-2);border-radius:16px;padding:12px;min-width:0}
+.tile b{display:block;font:700 21px/1.15 var(--display);white-space:nowrap} .tile small{font-size:12px;color:var(--muted);font-weight:600}
+.tile.hi{background:var(--primary);color:var(--on-primary)} .tile.hi small{color:inherit;opacity:.75}
+.chart{border:1.5px solid var(--line);border-radius:18px;padding:12px 8px 4px}
+.hrow{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.hrow .d{flex:none;width:40px;text-align:center;font:700 19px/1 var(--display)} .hrow .d small{display:block;font:600 11px var(--body);color:var(--muted);text-transform:uppercase;margin-top:2px}
+.hrow .m{flex:1;min-width:0} .hrow .m b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .hrow .m small{color:var(--muted);font-size:13px}
+.hrow .x{flex:none;width:36px;height:36px;display:grid;place-items:center;color:var(--muted);font-size:20px}
 /* Tarjetas de ruta */
 .cards{display:flex;flex-direction:column;gap:8px}
 .card{display:flex;gap:12px;align-items:stretch;padding:12px;border-radius:18px;border:2px solid var(--line);background:var(--surface);width:100%}
@@ -231,7 +253,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 <section id="sheet" aria-label="Planificador">
   <button id="grab" aria-label="Mostrar u ocultar el panel">
     <i></i>
-    <div class="head"><span class="logo" aria-hidden="true"><svg viewBox="0 0 1024 1024"><path d="M300 770C600 770 760 640 560 560C360 480 400 330 690 340" fill="none" stroke="#F2B705" stroke-width="84" stroke-linecap="round"/><circle cx="300" cy="770" r="74" fill="#fff"/><circle cx="300" cy="770" r="30" fill="#17382C"/><path d="M586 236a104 104 0 1 1 208 0c0 60-60 110-104 190c-44-80-104-130-104-190z" fill="#fff"/><circle cx="690" cy="236" r="42" fill="#17382C"/></svg></span><h1 id="title">Callejeo</h1><span class="ghost" id="back" role="button" tabindex="0" hidden>Cambiar</span></div>
+    <div class="head"><span class="logo" aria-hidden="true"><svg viewBox="0 0 1024 1024"><path d="M300 770C600 770 760 640 560 560C360 480 400 330 690 340" fill="none" stroke="#F2B705" stroke-width="84" stroke-linecap="round"/><circle cx="300" cy="770" r="74" fill="#fff"/><circle cx="300" cy="770" r="30" fill="#17382C"/><path d="M586 236a104 104 0 1 1 208 0c0 60-60 110-104 190c-44-80-104-130-104-190z" fill="#fff"/><circle cx="690" cy="236" r="42" fill="#17382C"/></svg></span><h1 id="title">Callejeo</h1><span class="ghost" id="act" role="button" tabindex="0"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true" style="vertical-align:-3px;margin-right:5px"><rect x="3" y="12" width="4.5" height="9" rx="1.5"/><rect x="9.75" y="6" width="4.5" height="15" rx="1.5"/><rect x="16.5" y="9" width="4.5" height="12" rx="1.5"/></svg>Mis paseos</span><span class="ghost" id="back" role="button" tabindex="0" hidden>Editar</span></div>
   </button>
   <div id="body"></div>
 </section>
@@ -519,14 +541,39 @@ function stopRow(cls,small,pl,target,last,removable){
     <button class="lbl" data-search='${JSON.stringify(target)}'><small>${small}</small><span class="${pl?'':'empty'}">${pl?esc(pl.label):'Toca para elegir'}</span></button>
     ${removable?`<button class="x" data-rm="${target.via}" aria-label="Quitar parada">×</button>`:''}</div>`;
 }
+const MCOL={verde:'#1E9E5A',vistas:'#2B6FD6',historia:'#C77700'};
+function weekStart(d){const x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x;}
+function statsHtml(){
+  const h=store.get('hist',[]), saved=store.get('saved',[]), now=new Date(), w0=weekStart(now).getTime(), W=7*864e5;
+  const weeks=Array.from({length:8},(_,i)=>({t:w0-(7-i)*W,m:0})); let month=0,total=0;
+  h.forEach(x=>{ total+=x.dist; const d=new Date(x.t); if(d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear()) month+=x.dist;
+    const i=7+Math.round((weekStart(d).getTime()-w0)/W); if(i>=0&&i<8) weeks[i].m+=x.dist; });
+  const max=Math.max(4000,...weeks.map(w=>w.m)), sw=340/8;
+  const bars=weeks.map((w,i)=>{const hh=w.m?Math.max(6,w.m/max*96):3,x=i*sw+7,cur=i===7;
+    return `<rect x="${x}" y="${118-hh}" width="${sw-14}" height="${hh}" rx="6" fill="${cur?'var(--mark)':'var(--ink)'}" opacity="${cur?1:w.m?.28:.1}"/>`+
+      (w.m?`<text x="${x+(sw-14)/2}" y="${112-hh}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--ink)">${(w.m/1000).toFixed(1).replace('.',',')}</text>`:'')+
+      `<text x="${x+(sw-14)/2}" y="136" text-anchor="middle" font-size="9.5" font-weight="${cur?700:500}" fill="var(--muted)">${cur?'Esta':new Date(w.t+432e5).toLocaleDateString('es-ES',{day:'numeric',month:'short'}).replace('.','')}</text>`;}).join('');
+  return `
+    <div class="tiles"><div class="tile hi"><b class="num">${fmtKm(weeks[7].m)}</b><small>Esta semana</small></div>
+      <div class="tile"><b class="num">${fmtKm(month)}</b><small>Este mes</small></div>
+      <div class="tile"><b class="num">${h.length}</b><small>${h.length===1?'Paseo':'Paseos'} en total</small></div></div>
+    <h2 class="eb">Kilómetros por semana</h2>
+    <div class="chart"><svg viewBox="0 0 340 142" role="img" aria-label="Kilómetros caminados en las últimas 8 semanas" style="display:block;width:100%;font-family:var(--body)"><line x1="0" x2="340" y1="118.5" y2="118.5" stroke="var(--line)"/>${bars}</svg></div>
+    ${saved.length?`<h2 class="eb">Rutas guardadas</h2><div class="saved">${saved.map((s,i)=>`<div class="it"><button data-load="${i}">${esc(s.name)}<small class="num">${fmtMin(s.min)} · ${fmtKm(s.dist)}</small></button><button class="x" data-del="${i}" aria-label="Borrar ruta guardada">×</button></div>`).join('')}</div>`:''}
+    <h2 class="eb">Historial</h2>
+    ${h.length?`<div>${h.slice(0,40).map((x,i)=>{const d=new Date(x.t);return `<div class="hrow"><span class="d num">${d.getDate()}<small>${d.toLocaleDateString('es-ES',{month:'short'}).replace('.','')}</small></span>
+      <span class="m"><b>${esc(x.title||'Paseo')}</b><small class="num">${fmtKm(x.dist)} · ${fmtMin(x.min)} · ${d.toLocaleDateString('es-ES',{weekday:'long'})}</small></span><button class="x" data-hdel="${i}" aria-label="Borrar del historial">×</button></div>`;}).join('')}</div>`
+      :'<p class="hint">Aún no hay paseos. Cuando sigas una ruta con «Empezar paseo», se apunta aquí sola al terminar.</p>'}`;
+}
 function render(){
   document.body.classList.toggle('nav',S.mode==='nav');
-  const b=$('body'); $('back').hidden=S.mode!=='results'; $('sheet').hidden=S.mode==='nav';
+  const b=$('body'); $('back').hidden=S.mode==='plan'; $('back').textContent=S.mode==='stats'?'Cerrar':'Editar'; $('act').hidden=S.mode!=='plan'; $('sheet').hidden=S.mode==='nav';
   $('navtop').hidden=$('navbot').hidden=S.mode!=='nav'; $('locate').hidden=S.mode==='nav';
   if(S.mode==='nav') return;
+  if(S.mode==='stats'){ $('title').textContent='Mis paseos'; b.innerHTML=statsHtml(); return; }
   if(S.mode==='plan'){
     $('title').textContent='Callejeo';
-    const km=targetD()/1000, mins=km/S.pace*60, isKm=S.unit==='km', saved=store.get('saved',[]);
+    const km=targetD()/1000, mins=km/S.pace*60, isKm=S.unit==='km';
     b.innerHTML=`
       <div class="stops">
         ${stopRow('', 'Inicio', S.start, 'start', S.loop&&!S.vias.length)}
@@ -534,43 +581,42 @@ function render(){
         ${S.loop?'':stopRow('end','Final',S.end,'end',true)}
       </div>
       <div class="row">
-        <button class="chipbtn" id="addvia">+ Parada</button>
-        ${S.start?'':'<button class="chipbtn" id="useme">◎ Mi ubicación</button>'}
-        <button class="chipbtn" id="home">⌂ ${S.home?'Desde casa':'Fijar mi casa'}</button>
-        <button class="sw" id="loop" role="switch" aria-checked="${S.loop}">Volver al inicio <i></i></button>
+        ${S.start?'':'<button class="chipbtn out" id="useme">◎ Mi ubicación</button>'}
+        <button class="chipbtn out" id="home">⌂ ${S.home?'Casa':'Fijar casa'}</button>
+        <button class="chipbtn out" id="addvia">+ Parada</button>
+        <button class="sw" id="loop" role="switch" aria-checked="${S.loop}">Circular <i></i></button>
       </div>
-      <div class="dur">
+      <div class="box dur">
         <div class="top"><div class="seg" role="group" aria-label="Medir el paseo en"><button data-unit="min" aria-pressed="${!isKm}">Tiempo</button><button data-unit="km" aria-pressed="${isKm}">Distancia</button></div>
-          <output class="num" id="durout">${isKm?fmtKm(km*1000):fmtMin(mins)}<small>≈ ${isKm?fmtMin(mins):fmtKm(km*1000)} a ${String(S.pace).replace('.',',')} km/h</small></output></div>
+          <output class="num" id="durout">${isKm?fmtKm(km*1000):fmtMin(mins)}<small>≈ ${isKm?fmtMin(mins):fmtKm(km*1000)}</small></output></div>
         ${isKm?`<input type="range" id="mins" aria-label="Distancia del paseo" min="1" max="15" step="0.5" value="${S.km}" style="--p:${(S.km-1)/14*100}%">`
               :`<input type="range" id="mins" aria-label="Duración del paseo" min="15" max="180" step="5" value="${S.minutes}" style="--p:${(S.minutes-15)/165*100}%">`}
-        <div class="row">${PACES.map(p=>`<button class="chipbtn" data-pace="${p[0]}" aria-pressed="${S.pace===p[0]}">${p[1]}</button>`).join('')}</div>
+        <div class="pace"><span class="eb">Ritmo</span><div class="seg sm" role="group" aria-label="Ritmo al caminar">${PACES.map(p=>`<button data-pace="${p[0]}" aria-pressed="${S.pace===p[0]}">${p[1]}</button>`).join('')}</div></div>
       </div>
-      <div class="mood"><span>Me apetece</span>${Object.entries(MOODS).map(([k,v])=>`<button class="chipbtn" data-mood="${k}" aria-pressed="${S.mood.includes(k)}">${v[0]}</button>`).join('')}</div>
-      <button class="cta" id="go" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> Buscando sitios bonitos…':'Proponer paseos'}</button>
-      <p class="hint">También puedes tocar el mapa para poner un punto, y arrastrar los marcadores para afinar.</p>
-      ${(()=>{const d=new Date(),h=store.get('hist',[]).filter(x=>{const t=new Date(x.t);return t.getMonth()===d.getMonth()&&t.getFullYear()===d.getFullYear();});
-        return h.length?`<div class="stat"><b class="num">${fmtKm(h.reduce((a,x)=>a+x.dist,0))}</b><span>este mes en ${h.length} ${h.length===1?'paseo':'paseos'}</span></div>`:'';})()}
-      ${saved.length?`<div class="saved"><h2>Guardados</h2>${saved.map((s,i)=>`<div class="it"><button data-load="${i}">${esc(s.name)}<small class="num">${fmtMin(s.min)} · ${fmtKm(s.dist)}</small></button><button class="x" data-del="${i}" aria-label="Borrar">×</button></div>`).join('')}</div>`:''}`;
+      <div class="mood"><span class="eb">Que pase por</span>${Object.entries(MOODS).map(([k,v])=>`<button class="mchip" style="--mc:${MCOL[k]}" data-mood="${k}" aria-pressed="${S.mood.includes(k)}"><i></i>${v[0]}</button>`).join('')}</div>
+      <p class="hint">Toca el mapa para poner un punto. Arrastra un marcador para afinarlo.</p>
+      <div class="dock"><button class="cta" id="go" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> Buscando sitios bonitos…':'Proponer paseos'}</button></div>`;
   } else {
     $('title').textContent='Elige tu paseo';
     const r=S.routes[S.sel];
     b.innerHTML=`${S.note?`<p class="note">${esc(S.note)}</p>`:''}
-      <div class="cards">${S.routes.map((x,i)=>{const rt=x.keys?x.keys.retrace:0,dm=S.unit==='km'?(x.dist-S.km*1000)/1000:x.min-S.minutes,okd=Math.abs(dm)<=(S.unit==='km'?0.25:3),
+      <div class="cards">${S.routes.map((x,i)=>{
+        if(i!==S.sel) return `<button class="card mini" style="--c:${x.color}" aria-pressed="false" data-sel="${i}"><span class="dotc"></span><span class="mid"><h3>${esc(x.title)}</h3></span><span class="r num">${fmtMin(x.min)} · ${fmtKm(x.dist)}</span></button>`;
+        const rt=x.keys?x.keys.retrace:0,dm=S.unit==='km'?(x.dist-S.km*1000)/1000:x.min-S.minutes,okd=Math.abs(dm)<=(S.unit==='km'?0.25:3),
           dtxt=Math.abs(dm)<=(S.unit==='km'?0.1:1)?'Clavado':(dm>0?'+':'−')+(S.unit==='km'?Math.abs(dm).toFixed(1).replace('.',',')+' km':Math.round(Math.abs(dm))+' min'),
           th=(x.hl||[]).find(h=>h.img),
           names=[...new Set((x.hl||[]).filter(h=>h.kind!=='pedestrian').sort((a,b)=>b.w-a.w).slice(0,3).sort((a,b)=>a.at-b.at).map(h=>h.name))];
-        return `<button class="card" style="--c:${x.color}" aria-pressed="${i===S.sel}" data-sel="${i}">${th?`<img class="thumb" loading="lazy" src="${esc(th.img)}" alt="">`:'<span class="way"></span>'}
+        return `<div class="card" style="--c:${x.color}" aria-pressed="true">${th?`<img class="thumb" loading="lazy" src="${esc(th.img)}" alt="">`:'<span class="way"></span>'}
           <span class="mid"><h3>${esc(x.title)}</h3><p>${names.length?'Pasa por '+esc(names.join(', ')):x.streets.length?'Por '+esc(x.streets.join(' y ')):'Por caminos sin nombre'}</p>
-          <span class="tags">${x.direct||x.saved?'':`<span class="tag ${okd?'ok':''}">${dtxt}</span>`}
+          <span class="tags">${i===0&&S.routes.length>1&&!x.direct?'<span class="tag star">★ Recomendado</span>':''}
+          ${x.direct||x.saved?'':`<span class="tag ${okd?'ok':''}">${dtxt}</span>`}
           ${x.up!=null?`<span class="tag">${x.up<10?'Llano':'↑ '+x.up+' m'}</span>`:''}
           ${(x.hl||[]).length?`<span class="tag ok">${x.hl.length} ${x.hl.length===1?'sitio':'sitios'} de interés</span>`:''}
           ${x.saved||rt<0.06?'':`<span class="tag">Repite un ${Math.round(rt*100)} %</span>`}</span></span>
-          <span class="big"><b class="num">${fmtMin(x.min)}</b><small class="num">${fmtKm(x.dist)}</small></span></button>`;}).join('')}</div>
-      ${(r.hl||[]).some(h=>h.img)?`<h2 class="phh">En el camino</h2><div class="photos">${r.hl.map((h,i)=>h.img?`<button class="ph" data-hl="${i}"><img loading="lazy" src="${esc(h.img)}" alt=""><span>${esc(h.name)}</span></button>`:'').join('')}</div>`:''}
-      <div class="sub"><button class="chipbtn" id="more" ${S.busy?'disabled':''}>${S.busy?'Buscando…':'↻ Otras'}</button>${r.wps&&S.loop?'<button class="chipbtn" id="rev">⇄ Invertir</button>':''}<button class="chipbtn" id="save">☆ Guardar</button></div>
-      <div class="dock"><div class="actions"><button class="cta" id="follow">▶ Empezar paseo</button><a class="cta alt" id="gm" href="${gmapsUrl(r)}" target="_blank" rel="noopener" style="text-decoration:none">Google Maps</a></div>
-      <small>Empezar paseo te guía aquí con tu GPS · ${esc(r.title)}</small></div>`;
+          <span class="big"><b class="num">${fmtMin(x.min)}</b><small class="num">${fmtKm(x.dist)}</small></span></div>`;}).join('')}</div>
+      ${(r.hl||[]).some(h=>h.img)?`<h2 class="eb">En el camino</h2><div class="photos">${r.hl.map((h,i)=>h.img?`<button class="ph" data-hl="${i}"><img loading="lazy" src="${esc(h.img)}" alt=""><span>${esc(h.name)}</span></button>`:'').join('')}</div>`:''}
+      <div class="sub"><button class="chipbtn out" id="more" ${S.busy?'disabled':''}>${S.busy?'Buscando…':'↻ Otras'}</button>${r.wps&&S.loop?'<button class="chipbtn out" id="rev">⇄ Invertir</button>':''}<button class="chipbtn out" id="save">☆ Guardar</button></div>
+      <div class="dock"><div class="actions"><button class="cta" id="follow">▶ Empezar paseo</button><a class="cta alt" id="gm" href="${gmapsUrl(r)}" target="_blank" rel="noopener" style="text-decoration:none">Google Maps</a></div></div>`;
   }
 }
 $('body').addEventListener('click',e=>{
@@ -582,6 +628,7 @@ $('body').addEventListener('click',e=>{
   if(t.dataset.mood){const k=t.dataset.mood;S.mood=S.mood.includes(k)?S.mood.filter(m=>m!==k):[...S.mood,k];store.set('mood',S.mood);return render();}
   if(t.dataset.unit){S.unit=t.dataset.unit;store.set('unit',S.unit);return render();}
   if(t.dataset.hl!=null){const h=S.routes[S.sel].hl[+t.dataset.hl];if(!isWide())$('sheet').classList.add('collapsed');map.setView(h.p,Math.max(map.getZoom(),16));return showHl(h);}
+  if(t.dataset.hdel!=null){const h=store.get('hist',[]);h.splice(+t.dataset.hdel,1);store.set('hist',h);return render();}
   if(t.dataset.del!=null){const s=store.get('saved',[]);s.splice(+t.dataset.del,1);store.set('saved',s);return render();}
   if(t.dataset.load!=null){const s=store.get('saved',[])[+t.dataset.load];
     const cum=[0];for(let i=1;i<s.coords.length;i++)cum.push(cum[i-1]+hav(s.coords[i-1],s.coords[i]));
@@ -605,6 +652,9 @@ $('body').addEventListener('input',e=>{ if(e.target.id!=='mins') return; const v
   $('durout').innerHTML=(isKm?fmtKm(km*1000):fmtMin(mins))+'<small>≈ '+(isKm?fmtMin(mins):fmtKm(km*1000))+' a '+String(S.pace).replace('.',',')+' km/h</small>'; });
 function goBack(){S.mode='plan';S.routes=[];drawRoutes();drawMarkers();render();}
 $('back').addEventListener('click',e=>{e.stopPropagation();goBack();});
+const openStats=()=>{S.mode='stats';$('sheet').classList.remove('collapsed');render();};
+$('act').addEventListener('click',e=>{e.stopPropagation();openStats();});
+$('act').addEventListener('keydown',e=>{if(e.key==='Enter'){e.stopPropagation();openStats();}});
 $('back').addEventListener('keydown',e=>{if(e.key==='Enter'){e.stopPropagation();goBack();}});
 
 /* hoja: tocar o arrastrar el asa */
@@ -674,7 +724,7 @@ function say(t){ if(!N.voice||!('speechSynthesis' in window)) return; try{const 
 function startNav(){
   const r=S.routes[S.sel]; if(!r) return; askHeading();
   if(!navigator.geolocation){toast('Este navegador no da acceso al GPS. Usa el botón de Google Maps.');return;}
-  Object.assign(N,{route:r,xy:r.coords.map(c=>toXY(c,r.coords[0][0])),idx:0,along:0,off:0,follow:true,said:-1,t0:Date.now(),done:false,started:false,fix:false,walked:0,last:null,rej:false});
+  Object.assign(N,{route:r,xy:r.coords.map(c=>toXY(c,r.coords[0][0])),idx:0,along:0,off:0,follow:true,said:-1,t0:Date.now(),done:false,started:false,fix:false,walked:0,last:null,rej:false,rec:false});
   gDone.clearLayers(); N.doneLine=L.polyline([],{color:'#8C9891',weight:6,opacity:.95,lineCap:'round',interactive:false}).addTo(gDone); $('nfix').hidden=true; $('nstop').textContent='Terminar';
   clearTimeout(N.gt); N.gt=setTimeout(()=>{ if(S.mode==='nav'&&!N.fix) $('nt').textContent='Aún no llega señal GPS. Comprueba que la ubicación está permitida para esta app y sal a cielo abierto.'; },12000);
   S.routes=[r]; S.sel=0; S.mode='nav'; render(); drawMarkers(); drawRoutes(false);
@@ -684,7 +734,8 @@ function startNav(){
   map.setView(r.coords[0],17); wake();
   N.watch=navigator.geolocation.watchPosition(onPos,err=>{ if(err.code===1){$('nt').textContent='Ubicación denegada. Actívala en Ajustes > Privacidad > Localización > Sitios web de Safari, o usa Google Maps.';toast('Sin permiso de ubicación no puedo guiarte.',6000);} },{enableHighAccuracy:true,maximumAge:2000,timeout:20000});
 }
-function stopNav(){ if(N.watch!=null) navigator.geolocation.clearWatch(N.watch); N.watch=null; if(N.lock){N.lock.release().catch(()=>{});N.lock=null;}
+function recordWalk(dist){ if(N.rec||dist<200) return; N.rec=true; const h=store.get('hist',[]); h.unshift({t:Date.now(),dist:Math.round(dist),min:Math.max(1,Math.round((Date.now()-N.t0)/60000)),title:N.route.title}); store.set('hist',h.slice(0,300)); }
+function stopNav(){ if(N.started&&!N.done) recordWalk(N.walked+N.along); if(N.watch!=null) navigator.geolocation.clearWatch(N.watch); N.watch=null; if(N.lock){N.lock.release().catch(()=>{});N.lock=null;}
   try{speechSynthesis.cancel();}catch(e){} gDone.clearLayers(); S.mode='results'; render(); drawMarkers(); drawRoutes(true); }
 function paintNav(){ const r=N.route, left=Math.max(0,r.dist-N.along), min=left/1000/S.pace*60;
   $('nprog').style.width=Math.min(100,N.along/r.dist*100)+'%'; $('nleft').textContent=fmtMin(min); $('nkm').textContent=fmtKm(left);
@@ -719,7 +770,7 @@ async function rejoin(){ if(!N.last||N.rej||S.mode!=='nav') return; N.rej=true; 
   }catch(e){ toast('No he podido recalcular. Vuelve a la línea marcada.'); } N.rej=false; }
 $('nfix').addEventListener('click',rejoin);
 function finish(){ N.done=true; const mins=(Date.now()-N.t0)/60000;
-  { const h=store.get('hist',[]); h.unshift({t:Date.now(),dist:Math.round(N.walked+N.route.dist),min:Math.round(mins),title:N.route.title}); store.set('hist',h.slice(0,300)); $('nstop').textContent='Cerrar'; } $('nprog').style.width='100%';
+  { recordWalk(N.walked+N.route.dist); $('nstop').textContent='Cerrar'; } $('nprog').style.width='100%';
   $('nd').textContent='¡Paseo completado!'; $('nt').textContent=fmtKm(N.walked+N.route.dist)+' en '+fmtMin(mins); $('narrow').style.transform='rotate(0deg)'; say('Paseo completado');
   $('nleft').textContent='0 min'; $('nkm').textContent='0 m'; }
 $('nstop').addEventListener('click',stopNav);
