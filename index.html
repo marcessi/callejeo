@@ -161,6 +161,15 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .hrow .d{flex:none;width:40px;text-align:center;font:700 19px/1 var(--display)} .hrow .d small{display:block;font:600 11px var(--body);color:var(--muted);text-transform:uppercase;margin-top:2px}
 .hrow .m{flex:1;min-width:0} .hrow .m b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .hrow .m small{color:var(--muted);font-size:13px}
 .hrow .x{flex:none;width:36px;height:36px;display:grid;place-items:center;color:var(--muted);font-size:20px}
+.card{flex-wrap:wrap}
+.cwrap{flex-basis:100%;display:flex;flex-direction:column;gap:6px}
+.cbar{display:flex;height:6px;border-radius:3px;overflow:hidden;gap:2px;margin-top:4px;width:100%}
+.cbar.lg{height:10px;border-radius:5px;margin-top:0}
+.cbar i{display:block;height:100%;min-width:3px}
+.clegend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.clegend span{display:inline-flex;align-items:center;gap:5px} .clegend b{width:9px;height:9px;border-radius:2px;display:inline-block}
+.kindl{font:600 11.5px var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--c)}
+.card.mini .mid{display:flex;flex-direction:column;gap:2px}
 /* Tarjetas de ruta */
 .cards{display:flex;flex-direction:column;gap:8px}
 .card{display:flex;gap:12px;align-items:stretch;padding:12px;border-radius:18px;border:2px solid var(--line);background:var(--surface);width:100%}
@@ -309,15 +318,10 @@ const store = {get(k,d){try{const v=localStorage.getItem('callejeo.'+k);return v
 let toastT; function toast(msg,ms=3500){const t=$('toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,ms);}
 
 /* ---------- estado ---------- */
-const COLORS = ['#D7263D','#1E9E5A','#2B6FD6','#E07B00'];
-const S = {mode:'plan',start:null,end:null,vias:[],loop:store.get('loop',true),minutes:store.get('minutes',45),unit:store.get('unit','min'),km:store.get('km',4),home:store.get('home',null),snap:[],parks:[],parksOk:false,style:store.get('style','variado'),parkMode:store.get('parkMode','cross'),pois:[],pace:store.get('pace',4.8),
+const COLORS = ['#D7263D','#7B3FD1','#0E8C8C','#E07B00','#C2185B'];
+const S = {mode:'plan',start:null,end:null,vias:[],loop:store.get('loop',true),minutes:store.get('minutes',45),unit:store.get('unit','min'),km:store.get('km',4),home:store.get('home',null),snap:[],parks:[],parksOk:false,pois:[],pace:store.get('pace',4.8),
   routes:[],sel:0,seed:0,busy:false,note:'',picking:null,me:null};
 const targetD = () => S.unit==='km' ? S.km*1000 : S.minutes/60*S.pace*1000;
-const STYLES={variado:['Variado',null,'de todo un poco'],
-  verde:['Verde',['park','garden','nature_reserve','beach'],'parques y jardines'],
-  urbano:['Urbano',['pedestrian','historic','attraction','wiki'],'plazas y sitios con historia'],
-  vistas:['Vistas',['viewpoint','beach','nature_reserve'],'miradores y mar']};
-if(!STYLES[S.style]) S.style='variado';
 const PACES = [[4,'Tranquilo'],[4.8,'Normal'],[5.6,'Ligero']];
 
 /* ---------- mapa ---------- */
@@ -460,7 +464,7 @@ async function climb(r){ try{ const n=Math.min(80,Math.max(12,Math.round(r.dist/
   const j=await (await tfetch(`https://api.open-meteo.com/v1/elevation?latitude=${la.join()}&longitude=${lo.join()}`,7000)).json();
   if(!Array.isArray(j.elevation)) return; let up=0,ref=j.elevation[0]; j.elevation.forEach(e=>{ if(e>ref+3){up+=e-ref;ref=e;} else if(e<ref-3) ref=e; }); r.up=Math.round(up); }catch(e){} }
 async function reverseRoute(){ const r=S.routes[S.sel]; if(!r||!r.wps||S.busy) return; S.busy=true; render();
-  try{ const w=r.wps.slice().reverse(), n=await route(w,!!r.around); Object.assign(n,{wps:n.wps||w,title:r.title,color:r.color,direct:r.direct,err:r.err,keys:segKeys(n.coords),min:n.dist/1000/S.pace*60}); n.hl=highlights(n); if(!r.around) n.cross=parkCuts(n,S.parks).names; S.routes[S.sel]=n;
+  try{ const w=r.wps.slice().reverse(), n=await route(w,!!r.around); Object.assign(n,{wps:n.wps||w,title:r.title,color:r.color,direct:r.direct,err:r.err,keys:segKeys(n.coords),min:n.dist/1000/S.pace*60}); n.hl=highlights(n); n.variant=r.variant; await composition(n); S.routes[S.sel]=n;
     climb(n).then(()=>{if(S.mode==='results')render();}); toast('Sentido invertido'); }catch(e){toast('No se ha podido invertir la ruta.');}
   S.busy=false; render(); drawRoutes(false); }
 /* ---------- parques: cuánto de una ruta va por dentro ---------- */
@@ -512,6 +516,30 @@ async function route(wps,avoid){
     w=wps.filter(x=>x.kind!=='shape'||!excl.some(g=>g.rings.some(rg=>ringIn(rg,x.p))));
     try{ r=await valhalla(w,polys,false); }catch(e){ break; } }
   r.left=Math.round(parkCuts(r,S.parks).inside); r.around=true; r.wps=w; return r; }
+/* ---------- tipo de trayecto: de qué está hecho cada tramo (Valhalla trace_attributes + contornos de parques) ---------- */
+const SURF={acera:['Acera','#7D8A83'],peatonal:['Peatonal','#2B6FD6'],parque:['Parque','#1E9E5A'],tierra:['Tierra','#B7791F']};
+function enc6(pts){ let o='',pl=0,pn=0; const e=v=>{v=v<0?~(v<<1):(v<<1);let s='';while(v>=0x20){s+=String.fromCharCode((0x20|(v&0x1f))+63);v>>=5;}return s+String.fromCharCode(v+63);};
+  for(const [la,lo] of pts){const a=Math.round(la*1e6),b=Math.round(lo*1e6);o+=e(a-pl)+e(b-pn);pl=a;pn=b;} return o; }
+async function composition(r){
+  const m={acera:0,peatonal:0,parque:0,tierra:0}; let steps=0;
+  try{ const body={encoded_polyline:enc6(r.coords),costing:'pedestrian',shape_match:'edge_walk',
+      filters:{attributes:['edge.use','edge.surface','edge.unpaved','edge.length','edge.names','edge.begin_shape_index','edge.end_shape_index'],action:'include'}};
+    const j=await (await tfetch('https://valhalla1.openstreetmap.de/trace_attributes',9000,{method:'POST',body:JSON.stringify(body)})).json();
+    if(!j.edges||!j.edges.length) throw new Error('trace');
+    j.edges.forEach(e=>{ const len=(e.length||0)*1000, a=r.coords[Math.min(r.coords.length-1,e.begin_shape_index||0)], b=r.coords[Math.min(r.coords.length-1,e.end_shape_index||0)], mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+      const named=!!(e.names&&e.names.length), use=e.use||'', sf=e.surface||'';
+      if(use==='steps'){ steps++; m.acera+=len; return; }
+      const dirt=['dirt','gravel','path','impassable'].includes(sf)||(e.unpaved&&(['path','track','bridleway','mountain_bike'].includes(use)||(!named&&use==='footway')));
+      if(dirt) m.tierra+=len; else if(inParks(S.parks,mid)) m.parque+=len;
+      else if(['pedestrian','living_street'].includes(use)||(use==='footway'&&!named)) m.peatonal+=len; else m.acera+=len; });
+  }catch(e){ const pk=parkCuts(r,S.parks).inside; m.parque=pk; m.acera=Math.max(0,r.dist-pk); r.compRough=true; }
+  const tot=Object.values(m).reduce((a,b)=>a+b,0)||1; r.comp={}; for(const k in m) r.comp[k]=m[k]/tot; r.steps_n=steps;
+  const c=r.comp; r.kind=c.tierra>=0.15?'tierra':c.parque>=0.18?'parque':c.peatonal>=0.3?'peatonal':'acera';
+  r.kindLabel={tierra:'Con tramos de tierra',parque:'Por parques',peatonal:'Calles peatonales',acera:c.tierra+c.parque<0.05?'Todo por acera':'Casi todo por acera'}[r.kind];
+  return r; }
+function compBar(r,big){ if(!r.comp) return ''; const parts=Object.keys(SURF).filter(k=>r.comp[k]>=0.01);
+  return `<span class="cbar${big?' lg':''}">${parts.map(k=>`<i style="width:${(r.comp[k]*100).toFixed(1)}%;background:${SURF[k][1]}"></i>`).join('')}</span>`+
+    (big?`<span class="clegend">${parts.map(k=>`<span><b style="background:${SURF[k][1]}"></b>${SURF[k][0]} ${Math.round(r.comp[k]*100)} %</span>`).join('')}${r.steps_n?`<span>⚠ ${r.steps_n} ${r.steps_n===1?'tramo':'tramos'} de escaleras</span>`:''}</span>`:''); }
 async function pool(items,n,fn){const out=[];let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){const k=i++;out[k]=await fn(items[k]);}}));return out;}
 
 /* ---------- rutas (OSRM a pie, datos de OpenStreetMap) ---------- */
@@ -596,34 +624,33 @@ async function plan(){
   const D=targetD(), cen=[fixed.reduce((a,f)=>a+f.p[0],0)/fixed.length,fixed.reduce((a,f)=>a+f.p[1],0)/fixed.length];
   const reach=Math.min(7000,Math.max(600,Math.max(...fixed.map(f=>hav(cen,f.p)))+D*0.4));
   try{
-    const skirt=S.parkMode==='around', slow=setTimeout(()=>{S.busyMsg='Descargando el mapa de la zona (solo la primera vez)…';if(S.busy)render();},3500);
-    const data=await loadArea(cen,reach,skirt?25000:7000).catch(()=>({pois:[],parks:[],parksOk:false})), fav=new Set(STYLES[S.style][1]||[]); clearTimeout(slow); S.busyMsg='Trazando rutas…'; render();
-    S.pois=data.pois.map(q=>({...q,w:q.w*(fav.size?(fav.has(q.kind)?1.8:0.6):1)})); S.parks=data.parks; S.parksOk=data.parksOk;
-    // bordear: nada de puntos de paso dentro de un parque; los parques se tocan por su borde más cercano al inicio
-    S.snap=!skirt?S.pois:S.pois.map(q=>{ if(PARKK.includes(q.kind)){ const g=S.parks.find(x=>x.rings.some(r=>ringIn(r,q.p)))||S.parks.find(x=>x.name&&x.name===q.name); if(!g) return null;
-        const pts=[].concat(...g.rings), c=[pts.reduce((a,p)=>a+p[0],0)/pts.length,pts.reduce((a,p)=>a+p[1],0)/pts.length];
-        const e=pts.reduce((b,p)=>hav(p,fixed[0].p)<hav(b,fixed[0].p)?p:b,pts[0]); return {...q,p:dest(e,bearing(c,e),30)}; }
-      return inParks(S.parks,q.p)?null:q; }).filter(Boolean);
-    if(skirt&&!S.parksOk) S.note='No he podido descargar los parques de esta zona (¿poca cobertura?), así que estas rutas podrían entrar en alguno. Pulsa «Otras» para reintentarlo.';
+    const slow=setTimeout(()=>{S.busyMsg='Descargando el mapa de la zona (solo la primera vez)…';if(S.busy)render();},3500);
+    const data=await loadArea(cen,reach,9000).catch(()=>({pois:[],parks:[],parksOk:false})); clearTimeout(slow); S.busyMsg='Trazando rutas…'; render();
+    S.pois=data.pois; S.parks=data.parks; S.parksOk=data.parksOk; S.snap=S.pois;
     const {L0,out}=buildCandidates(fixed,S.seed,D); let direct=null, found=[];
     if(L0>=60){ direct=await route(fixed,false); direct.wps=fixed; direct.err=Math.abs(direct.dist-D)/D; direct.title=S.loop?'Ida y vuelta directa':'Camino directo'; direct.direct=true; }
     if(!direct||direct.dist<D*0.88){
       found=(await pool(out,2,c=>solve(c,D))).filter(Boolean);
       found.forEach(r=>{r.keys=segKeys(r.coords);r.hl=highlights(r);r.score=1.2*r.err+1.5*r.keys.retrace-0.05*Math.min(7,r.hl.reduce((a,h)=>a+h.w,0));});
       found.sort((a,b)=>a.score-b.score);
-      const keep=[]; found.forEach(r=>{ if(keep.length<3&&r.err<0.35&&!keep.some(k=>similar(k.keys,r.keys)>0.7)) keep.push(r); });
+      const keep=[]; found.forEach(r=>{ if(keep.length<4&&r.err<0.35&&!keep.some(k=>similar(k.keys,r.keys)>0.7)) keep.push(r); });
       if(!keep.length&&found[0]) keep.push(found[0]);
       found=keep;
     } else if(direct.dist>D*1.12) S.note=`Solo llegar ya son ${fmtMin(direct.dist/1000/S.pace*60)} (${fmtKm(direct.dist)}), más de lo que pedías. Te dejo el camino más corto.`;
-    if(skirt&&S.parks.length){ const redo=async o=>{ try{ let n=await route(o.wps,true);
-          if(o.c&&Math.abs(n.dist-D)/D>0.08){ const w2=o.c.make(o.c.L0+(o.Lt-o.c.L0)*Math.min(1.6,Math.max(0.6,D/n.dist))); if(w2){ const n2=await route(w2,true).catch(()=>null); if(n2&&Math.abs(n2.dist-D)<Math.abs(n.dist-D)&&n2.left<=n.left+20) n=n2; } }
-          Object.assign(n,{title:o.title,direct:o.direct,err:Math.abs(n.dist-D)/D,keys:segKeys(n.coords)}); n.hl=highlights(n); n.score=o.score; return n;
-        }catch(e){ o.around=true; o.left=Math.round(parkCuts(o,S.parks).inside); return o; } };
-      found=await Promise.all(found.map(redo)); if(direct) direct=await redo(direct); }
-    else found.concat(direct?[direct]:[]).forEach(r=>{ r.cross=parkCuts(r,S.parks).names; });
     if(direct){direct.keys=segKeys(direct.coords);direct.hl=highlights(direct); if(!found.some(r=>similar(r.keys,direct.keys)>0.9)) found.push(direct);}
     if(!found.length) throw new Error('none');
-    const seen={}; found.forEach((r,i)=>{r.color=COLORS[i%COLORS.length];seen[r.title]=(seen[r.title]||0)+1; if(seen[r.title]>1) r.title=r.title.replace('Rodeo','Rodeo amplio').replace('Vuelta','Otra vuelta'); r.min=r.dist/1000/S.pace*60;
+    S.busyMsg='Mirando por qué tipo de camino va cada ruta…'; render();
+    await Promise.all(found.map(composition));
+    // si ninguna va solo por calle asfaltada, añade esa alternativa a partir de la mejor (sin entrar en parques)
+    const clean=r=>r.comp.tierra+r.comp.parque<0.06;
+    if(!found.some(clean)&&S.parks.length){ const b=found.find(r=>!r.direct)||found[0];
+      try{ const n=await route(b.wps,true); Object.assign(n,{title:b.title,direct:b.direct,err:Math.abs(n.dist-D)/D,keys:segKeys(n.coords)}); n.hl=highlights(n); await composition(n);
+        if(clean(n)||n.comp.tierra+n.comp.parque<b.comp.tierra+b.comp.parque-0.1){ n.variant=true; found.push(n); } }catch(e){} }
+    // una de cada tipo primero; luego el resto por puntuación
+    const pick=[]; ['acera','peatonal','parque','tierra'].forEach(k=>{ const r=found.filter(x=>x.kind===k&&!x.direct).sort((a,b)=>(a.score||0)-(b.score||0))[0]; if(r) pick.push(r); });
+    found.forEach(r=>{ if(pick.length<4&&!pick.includes(r)&&!r.direct) pick.push(r); }); found.filter(r=>r.direct).forEach(r=>pick.push(r));
+    found=pick.slice(0,5);
+    const seen={}; found.forEach((r,i)=>{r.color=COLORS[i%COLORS.length]; if(r.variant) r.title=r.title.replace(/^(Vuelta|Pasando) por /,'$1 cerca de ');seen[r.title]=(seen[r.title]||0)+1; if(seen[r.title]>1) r.title=r.title.replace('Rodeo','Rodeo amplio').replace('Vuelta','Otra vuelta'); r.min=r.dist/1000/S.pace*60;
       const top=r.hl.filter(h=>h.w>=2.5).sort((a,b)=>b.w-a.w)[0]; if(top&&!r.direct){const t=(S.loop&&!S.vias.length?'Vuelta por ':'Pasando por ')+top.name; if(!found.some(o=>o.title===t)) r.title=t;} });
     S.routes=found; S.sel=0; S.mode='results'; S.seed++;
     $('sheet').classList.remove('collapsed'); S.busy=false; drawMarkers(); render(); drawRoutes(true);
@@ -703,11 +730,6 @@ function render(){
               :`<input type="range" id="mins" aria-label="Duración del paseo" min="15" max="180" step="5" value="${S.minutes}" style="--p:${(S.minutes-15)/165*100}%">`}
         <div class="pace"><span class="eb">Ritmo</span><div class="seg sm" role="group" aria-label="Ritmo al caminar">${PACES.map(p=>`<button data-pace="${p[0]}" aria-pressed="${S.pace===p[0]}">${p[1]}</button>`).join('')}</div></div>
       </div>
-      <div class="box prefs">
-        <div class="kind"><span class="eb">Tipo de paseo · <b>${STYLES[S.style][2]}</b></span>
-          <div class="seg full" role="group" aria-label="Tipo de paseo">${Object.entries(STYLES).map(([k,v])=>`<button data-style="${k}" aria-pressed="${S.style===k}">${v[0]}</button>`).join('')}</div></div>
-        <div class="pace"><span class="eb">Parques</span><div class="seg sm" role="group" aria-label="Qué hacer con los parques"><button data-park="cross" aria-pressed="${S.parkMode!=='around'}">Entrar</button><button data-park="around" aria-pressed="${S.parkMode==='around'}">Solo bordear</button></div></div>
-      </div>
       ${S.start?'':'<p class="hint">También puedes tocar el mapa para poner un punto.</p>'}
       <div class="dock"><button class="cta" id="go" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> '+(S.busyMsg||'Buscando sitios bonitos…'):'Proponer paseos'}</button></div>`;
   } else {
@@ -715,20 +737,20 @@ function render(){
     const r=S.routes[S.sel];
     b.innerHTML=`${S.note?`<p class="note">${esc(S.note)}</p>`:''}
       <div class="cards">${S.routes.map((x,i)=>{
-        if(i!==S.sel) return `<button class="card mini" style="--c:${x.color}" aria-pressed="false" data-sel="${i}"><span class="dotc"></span><span class="mid"><h3>${esc(x.title)}</h3></span><span class="r num">${fmtMin(x.min)} · ${fmtKm(x.dist)}</span></button>`;
+        if(i!==S.sel) return `<button class="card mini" style="--c:${x.color}" aria-pressed="false" data-sel="${i}"><span class="dotc"></span><span class="mid"><h3>${esc(x.kindLabel||x.title)}</h3>${compBar(x)}</span><span class="r num">${fmtMin(x.min)} · ${fmtKm(x.dist)}</span></button>`;
         const rt=x.keys?x.keys.retrace:0,dm=S.unit==='km'?(x.dist-S.km*1000)/1000:x.min-S.minutes,okd=Math.abs(dm)<=(S.unit==='km'?0.25:3),
           dtxt=Math.abs(dm)<=(S.unit==='km'?0.1:1)?'Clavado':(dm>0?'+':'−')+(S.unit==='km'?Math.abs(dm).toFixed(1).replace('.',',')+' km':Math.round(Math.abs(dm))+' min'),
           th=(x.hl||[]).find(h=>h.img),
           names=[...new Set((x.hl||[]).filter(h=>h.kind!=='pedestrian').sort((a,b)=>b.w-a.w).slice(0,3).sort((a,b)=>a.at-b.at).map(h=>h.name))];
         return `<div class="card" style="--c:${x.color}" aria-pressed="true">${th?`<img class="thumb" loading="lazy" src="${esc(th.img)}" alt="">`:'<span class="way"></span>'}
-          <span class="mid"><h3>${esc(x.title)}</h3><p>${names.length?'Pasa por '+esc(names.join(', ')):x.streets.length?'Por '+esc(x.streets.join(' y ')):'Por caminos sin nombre'}</p>
-          <span class="tags">${i===0&&S.routes.length>1&&!x.direct?'<span class="tag star">★ Recomendado</span>':''}
+          <span class="mid"><span class="kindl">${esc(x.kindLabel||'')}</span><h3>${esc(x.title)}</h3><p>${names.length?'Pasa por '+esc(names.join(', ')):x.streets.length?'Por '+esc(x.streets.join(' y ')):'Por caminos sin nombre'}</p>
+          <span class="tags">
           ${x.direct||x.saved?'':`<span class="tag ${okd?'ok':''}">${dtxt}</span>`}
           ${x.up!=null?`<span class="tag">${x.up<10?'Llano':'↑ '+x.up+' m'}</span>`:''}
           ${(x.hl||[]).length?`<span class="tag ok">${x.hl.length} ${x.hl.length===1?'sitio':'sitios'} de interés</span>`:''}
           ${x.saved||rt<0.06?'':`<span class="tag">Repite un ${Math.round(rt*100)} %</span>`}</span></span>
-          <span class="big"><b class="num">${fmtMin(x.min)}</b><small class="num">${fmtKm(x.dist)}</small></span></div>`;}).join('')}</div>
-      ${r.around?(r.left>40?`<p class="note">No he podido evitarlo del todo: unos ${fmtKm(r.left)} de esta ruta van por dentro de un parque.</p>`:'<p class="hint">Esta ruta no entra en ningún parque.</p>'):(r.cross&&r.cross.length?`<p class="hint">Cruza ${esc(r.cross.join(', '))}.</p>`:'')}
+          <span class="big"><b class="num">${fmtMin(x.min)}</b><small class="num">${fmtKm(x.dist)}</small></span>
+          <span class="cwrap">${compBar(x,true)}</span></div>`;}).join('')}</div>
       ${(r.hl||[]).some(h=>h.img)?`<h2 class="eb">En el camino</h2><div class="photos">${r.hl.map((h,i)=>h.img?`<button class="ph" data-hl="${i}"><img loading="lazy" src="${esc(h.img)}" alt=""><span>${esc(h.name)}</span></button>`:'').join('')}</div>`:''}
       <div class="sub"><button class="chipbtn out" id="more" ${S.busy?'disabled':''}>${S.busy?'Buscando…':'↻ Otras'}</button>${r.wps&&S.loop?'<button class="chipbtn out" id="rev">⇄ Invertir</button>':''}<button class="chipbtn out" id="save">☆ Guardar</button></div>
       <div class="dock"><div class="actions"><button class="cta" id="follow">▶ Empezar paseo</button><a class="cta alt" id="gm" href="${gmapsUrl(r)}" target="_blank" rel="noopener" style="text-decoration:none">Google Maps</a></div></div>`;
@@ -741,8 +763,6 @@ $('body').addEventListener('click',e=>{
   if(t.dataset.rm!=null){S.vias.splice(+t.dataset.rm,1);drawMarkers();return render();}
   if(t.dataset.pace){S.pace=+t.dataset.pace;store.set('pace',S.pace);return render();}
   if(t.dataset.sel!=null) return select(+t.dataset.sel);
-  if(t.dataset.style){S.style=t.dataset.style;store.set('style',S.style);return render();}
-  if(t.dataset.park){S.parkMode=t.dataset.park;store.set('parkMode',S.parkMode);return render();}
   if(t.dataset.unit){S.unit=t.dataset.unit;store.set('unit',S.unit);return render();}
   if(t.dataset.hl!=null){const h=S.routes[S.sel].hl[+t.dataset.hl];if(!isWide())$('sheet').classList.add('collapsed');map.setView(h.p,Math.max(map.getZoom(),16));return showHl(h);}
   if(t.dataset.hdel!=null){const h=store.get('hist',[]);h.splice(+t.dataset.hdel,1);store.set('hist',h);return render();}
@@ -762,7 +782,7 @@ $('body').addEventListener('click',e=>{
     case 'rev': return reverseRoute();
     case 'useme': return $('locate').click();
     case 'save': { const r=S.routes[S.sel], s=store.get('saved',[]);
-      s.unshift({name:r.title+(r.streets[0]?' · '+r.streets[0]:''),dist:r.dist,min:r.min,coords:r.coords.map(c=>[+c[0].toFixed(5),+c[1].toFixed(5)]),steps:r.steps,streets:r.streets,viaAt:r.viaAt,hl:r.hl||[],start:S.start,end:S.end,vias:S.vias,loop:S.loop});
+      s.unshift({name:r.title+(r.streets[0]?' · '+r.streets[0]:''),dist:r.dist,min:r.min,coords:r.coords.map(c=>[+c[0].toFixed(5),+c[1].toFixed(5)]),steps:r.steps,streets:r.streets,viaAt:r.viaAt,hl:r.hl||[],comp:r.comp,kindLabel:r.kindLabel,steps_n:r.steps_n,start:S.start,end:S.end,vias:S.vias,loop:S.loop});
       store.set('saved',s.slice(0,12)); t.textContent='★ Guardado'; return; }
   }
 });
