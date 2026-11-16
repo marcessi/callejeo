@@ -288,6 +288,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://unpkg.com/pbf@3.2.1/dist/pbf.js"></script>
 <script>
 'use strict';
 /* ---------- utilidades ---------- */
@@ -325,7 +326,7 @@ map.attributionControl.setPrefix(false);
 let tiles;
 function setTiles(){ if(tiles) tiles.remove();
   tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    {maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map); }
+    {maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://openfreemap.org">OpenFreeMap</a>'}).addTo(map); }
 setTiles(); dark.addEventListener('change',setTiles);
 map.on('moveend',()=>{const c=map.getCenter();store.set('view',{c:[c.lat,c.lng],z:map.getZoom()});});
 const gMarkers = L.layerGroup().addTo(map), gRoutes = L.layerGroup().addTo(map), gDone = L.layerGroup().addTo(map), gMe = L.layerGroup().addTo(map);
@@ -385,55 +386,61 @@ const poiCache={};
 function tfetch(url,ms=9000){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(url,{signal:c.signal}).finally(()=>clearTimeout(t));}
 const KIND={park:['Parque',3,130],garden:['Jardín',2.5,90],nature_reserve:['Espacio natural',3,150],viewpoint:['Mirador',3,60],beach:['Playa',3,120],
   attraction:['Lugar de interés',2,60],pedestrian:['Calle peatonal',1.5,45],historic:['Sitio histórico',1.5,60],wiki:['',1.2,90]};
-const OVP=['https://overpass-api.de/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
-function ovp(q,ms){ // los servidores públicos van lentos y se saturan: se pregunta a varios a la vez, con reintentos, y vale el primero que conteste bien
-  const one=async(host,delay)=>{ if(delay) await new Promise(r=>setTimeout(r,delay)); const r=await tfetch(host+'?data='+encodeURIComponent(q),ms); if(!r.ok) throw new Error('ovp '+r.status);
-    const j=await r.json(); if(!Array.isArray(j.elements)||(j.remark&&!j.elements.length)) throw new Error('ovp vacío'); return j; };
-  return Promise.any([...OVP.map(h=>one(h,0)),one(OVP[0],5000),one(OVP[0],12000),one(OVP[1],8000)]); }
-const bbox=(c,R)=>{const dl=R/110540,dn=R/(111320*Math.cos(rad(c[0])));return `(${(c[0]-dl).toFixed(5)},${(c[1]-dn).toFixed(5)},${(c[0]+dl).toFixed(5)},${(c[1]+dn).toFixed(5)})`;};
-const r5=v=>+v.toFixed(5);
-async function ovParks(c,R){ const bb=bbox(c,R), pk='["leisure"~"^(park|garden|nature_reserve)$"]["name"]';
-  const j=await ovp(`[out:json][timeout:40];(way${pk}${bb};relation${pk}${bb};);out geom;`,50000), pois=[], parks=[];
-  j.elements.forEach(e=>{ const t=e.tags||{}; if(!KIND[t.leisure]) return;
-    const rings=(e.geometry?[e.geometry]:(e.members||[]).filter(m=>m.geometry).map(m=>m.geometry)).map(g=>{ const out=[]; g.filter(Boolean).forEach((p,i)=>{const q=[r5(p.lat),r5(p.lon)]; if(!i||i===g.length-1||hav(out[out.length-1],q)>8) out.push(q);}); return out; }).filter(g=>g.length>1);
-    if(!rings.length) return; const pts=[].concat(...rings);
-    parks.push({name:t.name,rings}); pois.push({p:[r5(pts.reduce((x,p)=>x+p[0],0)/pts.length),r5(pts.reduce((x,p)=>x+p[1],0)/pts.length)],name:t.name,kind:t.leisure,w:KIND[t.leisure][1]}); });
-  return {pois,parks}; }
-async function ovPois(c,R){ const bb=bbox(c,R);
-  const j=await ovp(`[out:json][timeout:40];(node["tourism"~"^(viewpoint|attraction)$"]${bb};way["tourism"="attraction"]["name"]${bb};way["highway"="pedestrian"]["name"]${bb};node["historic"]["name"]${bb};way["natural"="beach"]${bb};);out center tags 400;`,50000), pois=[];
-  j.elements.forEach(e=>{ const t=e.tags||{}, lat=e.lat!=null?e.lat:(e.center&&e.center.lat), lon=e.lon!=null?e.lon:(e.center&&e.center.lon); if(lat==null) return;
-    const kind=[t.natural==='beach'&&'beach',t.tourism,t.highway==='pedestrian'&&'pedestrian',t.historic&&'historic'].find(k=>k&&KIND[k]); if(!kind) return;
-    pois.push({p:[r5(lat),r5(lon)],name:t.name||KIND[kind][0],kind,w:KIND[kind][1]}); });
-  return pois; }
 async function wiki(lang,c,R){
   const u=`https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch&ggscoord=${c[0].toFixed(5)}%7C${c[1].toFixed(5)}&ggsradius=${Math.round(Math.min(10000,Math.max(500,R)))}&ggslimit=50&prop=coordinates%7Cpageimages&piprop=thumbnail&pithumbsize=480&pilimit=50&colimit=50`;
   const r=await tfetch(u); if(!r.ok) throw new Error('wiki'); const j=await r.json(), pages=(j.query&&j.query.pages)||{};
   return Object.values(pages).filter(p=>p.thumbnail&&p.coordinates&&p.coordinates[0]&&!/\.svg/i.test(p.thumbnail.source)).map(p=>({p:[p.coordinates[0].lat,p.coordinates[0].lon],name:p.title,kind:'wiki',w:KIND.wiki[1],img:p.thumbnail.source,url:`https://${lang}.wikipedia.org/?curid=${p.pageid}`}));
 }
-/* Datos de la zona (sitios, fotos y contornos de parques). Se guardan 30 días en el móvil: la primera vez en una zona tarda, luego es inmediato. */
-const area={mem:[],fly:null};
-function mergePois(ov,wikis){ const all=[]; [ov,...wikis].forEach(list=>list.forEach(p=>{
-    const dup=all.find(q=>(q.kind==='wiki'||p.kind==='wiki')?hav(q.p,p.p)<70:(q.name===p.name&&hav(q.p,p.p)<400));
-    if(dup){ if(p.img&&!dup.img){dup.img=p.img;dup.url=p.url;dup.w+=0.5;} } else all.push({...p}); })); return all; }
-function areaGet(c,reach){ return area.mem.concat(store.get('areas',[])).find(e=>Date.now()-e.t<90*864e5&&hav(c,e.c)+reach<=e.R+50); }
-function areaPut(e){ area.mem=[e,...area.mem.filter(o=>o.c!==e.c)]; const old=store.get('areas',[]).filter(o=>hav(o.c,e.c)>300);
-  for(let n=3;n>=0;n--){ try{ localStorage.setItem('callejeo.areas',JSON.stringify([e,...old.slice(0,n)])); return; }catch(x){} } }
-async function loadArea(c,reach,waitMs){
-  const hit=areaGet(c,reach); if(hit) return hit;
-  if(!area.fly||hav(area.fly.c,c)+reach>area.fly.R+50){ const f={c,R:Math.min(6000,Math.max(2500,reach*1.25))};
-    const save=()=>{ if(f.pkv) areaPut({c:f.c,R:f.R,t:Date.now(),pois:mergePois(f.pkv.pois.concat(f.pov||[]),f.wkv||[]),parks:f.pkv.parks,parksOk:true}); };
-    f.pk=ovParks(c,f.R).then(v=>{f.pkv=v;save();},()=>{});
-    f.po=ovPois(c,f.R).then(v=>{f.pov=v;save();},()=>{});
-    f.wk=Promise.allSettled([wiki('es',c,f.R),wiki('ca',c,f.R)]).then(r=>{f.wkv=r.filter(x=>x.status==='fulfilled').map(x=>x.value);save();});
-    Promise.all([f.pk,f.po,f.wk]).then(()=>{ if(area.fly===f) area.fly=null; });
-    area.fly=f; }
-  const f=area.fly, wait=ms=>new Promise(r=>setTimeout(r,ms));
-  await Promise.race([f.pk,wait(waitMs)]); await Promise.race([Promise.all([f.po,f.wk]),wait(waitMs?5000:0)]);
-  return areaGet(c,reach)||{pois:mergePois((f.pkv?f.pkv.pois:[]).concat(f.pov||[]),f.wkv||[]),parks:f.pkv?f.pkv.parks:[],parksOk:!!f.pkv};
-}
+/* ---------- datos del mapa: teselas vectoriales de OpenFreeMap (datos de OpenStreetMap). Rápidas y sin colas, a diferencia de Overpass ---------- */
+const TZ=14, r5=v=>+v.toFixed(5);
+function mvt(buf){ const val=(t,o,p)=>{ if(t===1)o.v=p.readString(); else if(t===2)o.v=p.readFloat(); else if(t===3)o.v=p.readDouble(); else if(t===4||t===5)o.v=p.readVarint(); else if(t===6)o.v=p.readSVarint(); else if(t===7)o.v=p.readBoolean(); };
+  const feat=(t,f,p)=>{ if(t===2)p.readPackedVarint(f.tags); else if(t===3)f.type=p.readVarint(); else if(t===4)p.readPackedVarint(f.geom); };
+  const layer=(t,l,p)=>{ if(t===1)l.name=p.readString(); else if(t===2)l.features.push(p.readMessage(feat,{tags:[],geom:[],type:0})); else if(t===3)l.keys.push(p.readString()); else if(t===4)l.values.push(p.readMessage(val,{v:null}).v); else if(t===5)l.extent=p.readVarint(); };
+  const out={}; new Pbf(buf).readFields((t,o,p)=>{ if(t===3){const l=p.readMessage(layer,{name:'',features:[],keys:[],values:[],extent:4096}); o[l.name]=l;} },out); return out; }
+const ll2t=(lat,lon)=>{const n=2**TZ;return [Math.floor((lon+180)/360*n),Math.floor((1-Math.asinh(Math.tan(rad(lat)))/Math.PI)/2*n)];};
+function ringIn(ring,p){ let c=false; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const a=ring[i],b=ring[j]; if((a[0]>p[0])!==(b[0]>p[0])&&p[1]<(b[1]-a[1])*(p[0]-a[0])/(b[0]-a[0])+a[1]) c=!c;} return c; }
+function parseTile(buf,x,y){ const out={pk:[],po:[]}; if(!buf.byteLength) return out; const T=mvt(buf), n=2**TZ;
+  const props=(l,f)=>{const o={};for(let i=0;i<f.tags.length;i+=2)o[l.keys[f.tags[i]]]=l.values[f.tags[i+1]];return o;};
+  const ll=(l,px,py)=>{const X=(x+px/l.extent)/n,Y=(y+py/l.extent)/n;return [r5(deg(Math.atan(Math.sinh(Math.PI*(1-2*Y))))),r5(X*360-180)];};
+  const P=T.poi; if(P) P.features.forEach(f=>{ if(f.type!==1||f.geom.length<3) return; const p=props(P,f), px=(f.geom[1]>>1)^-(f.geom[1]&1), py=(f.geom[2]>>1)^-(f.geom[2]&1);
+    if(px<0||py<0||px>=P.extent||py>=P.extent) return;
+    const kind=p.class==='park'?'park':p.class==='garden'?'garden':p.subclass==='viewpoint'?'viewpoint':(p.class==='attraction'||p.class==='museum')?'attraction':(p.class==='monument'||p.class==='castle')?'historic':null;
+    const name=p.name||p['name:latin']||''; if(!kind||(!name&&kind!=='viewpoint')) return; out.po.push({p:ll(P,px,py),name:name||KIND[kind][0],kind,w:KIND[kind][1]}); });
+  const L=T.landcover, gd=[]; if(L) L.features.forEach(f=>{ if(f.type!==3) return; const sc=props(L,f).subclass; if(sc!=='park'&&sc!=='garden') return;
+    let cx=0,cy=0,i=0,ring=null; const g=f.geom, close=()=>{ if(!ring||ring.length<3) return; let a=1e9,b=-1e9,c=1e9,d=-1e9; ring.forEach(q=>{a=Math.min(a,q[0]);b=Math.max(b,q[0]);c=Math.min(c,q[1]);d=Math.max(d,q[1]);});
+      if(Math.max(b-a,d-c)<70) return; const o=[]; ring.forEach((q,k)=>{const v=ll(L,q[0],q[1]); if(!k||hav(o[o.length-1],v)>6) o.push(v);}); if(o.length>2) (sc==='park'?out.pk:gd).push(o); };
+    while(i<g.length){ const cmd=g[i]&7,cn=g[i]>>3; i++; if(cmd===7){close();ring=null;continue;}
+      for(let k=0;k<cn;k++){ cx+=(g[i]>>1)^-(g[i]&1); cy+=(g[i+1]>>1)^-(g[i+1]&1); i+=2; if(cmd===1){close();ring=[];} ring.push([cx,cy]); } } close(); });
+  const named=out.po.filter(q=>q.kind==='garden'||q.kind==='park'); gd.forEach(r=>{ if(named.some(q=>ringIn(r,q.p))) out.pk.push(r); });   // jardines: solo los públicos con nombre
+  return out; }
+const tmem={};
+async function tileUrl(){ const s=store.get('tver',null); if(s&&Date.now()-s.t<864e5) return s.u;
+  try{ const u=(await (await tfetch('https://tiles.openfreemap.org/planet',8000)).json()).tiles[0]; store.set('tver',{t:Date.now(),u}); return u; }catch(e){ if(s) return s.u; throw e; } }
+async function getTile(x,y){ const k=x+'/'+y; if(tmem[k]) return tmem[k]; const all=store.get('tiles',{}); if(all[k]&&Date.now()-all[k].t<120*864e5) return tmem[k]=all[k];
+  const r=await tfetch((await tileUrl()).replace('{z}',TZ).replace('{x}',x).replace('{y}',y),25000); if(!r.ok&&r.status!==404) throw new Error('tile '+r.status);
+  const d=parseTile(r.ok?await r.arrayBuffer():new ArrayBuffer(0),x,y); d.t=Date.now(); return tmem[k]=d; }
+function saveTiles(){ const all=Object.assign(store.get('tiles',{}),tmem), ks=Object.keys(all).sort((a,b)=>all[b].t-all[a].t);
+  for(let n=Math.min(ks.length,36);n>0;n=Math.floor(n*0.6)){ try{ const o={}; ks.slice(0,n).forEach(k=>o[k]=all[k]); localStorage.setItem('callejeo.tiles',JSON.stringify(o)); return; }catch(e){} } }
+function buildArea(tiles){ const rings=[].concat(...tiles.map(t=>t.pk)), pois=[], par=rings.map((_,i)=>i), find=i=>par[i]===i?i:(par[i]=find(par[i]));
+  tiles.forEach(t=>t.po.forEach(p=>{ if(!pois.some(q=>q.name===p.name&&q.kind===p.kind&&hav(q.p,p.p)<150)) pois.push({...p}); }));
+  const bb=rings.map(r=>{let a=90,b=-90,c=180,d=-180;r.forEach(q=>{a=Math.min(a,q[0]);b=Math.max(b,q[0]);c=Math.min(c,q[1]);d=Math.max(d,q[1]);});return [a,b,c,d];});
+  for(let i=0;i<rings.length;i++) for(let j=i+1;j<rings.length;j++){ const A=bb[i],B=bb[j]; if(A[0]>B[1]||B[0]>A[1]||A[2]>B[3]||B[2]>A[3]||find(i)===find(j)) continue;
+    if(rings[i].some(q=>ringIn(rings[j],q))||rings[j].some(q=>ringIn(rings[i],q))) par[find(i)]=find(j); }
+  const groups={}; rings.forEach((r,i)=>{(groups[find(i)]=groups[find(i)]||[]).push(r);});
+  const parks=Object.values(groups).map(rs=>{ const nm=pois.find(q=>(q.kind==='park'||q.kind==='garden')&&rs.some(r=>ringIn(r,q.p))); return {name:nm?nm.name:'',rings:rs}; });
+  return {pois,parks}; }
+function mergePois(base,wikis){ const all=base.map(p=>({...p})); wikis.forEach(list=>list.forEach(p=>{ const dup=all.find(q=>hav(q.p,p.p)<70);
+    if(dup){ if(!dup.img){dup.img=p.img;dup.url=p.url;dup.w+=0.5;} } else all.push({...p}); })); return all; }
+const wmem={};
+async function loadArea(c,reach,waitMs){ const R=Math.min(Math.max(reach,700),2600), dl=R/110540, dn=R/(111320*Math.cos(rad(c[0])));
+  const [x0,y1]=ll2t(c[0]-dl,c[1]-dn), [x1,y0]=ll2t(c[0]+dl,c[1]+dn), list=[]; for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) list.push([x,y]);
+  const wk=c.map(v=>v.toFixed(2)).join()+'|'+Math.round(R/500); if(!wmem[wk]) wmem[wk]=Promise.allSettled([wiki('es',c,R),wiki('ca',c,R)]).then(r=>r.filter(x=>x.status==='fulfilled').map(x=>x.value));
+  const tl=Promise.allSettled(list.map(t=>getTile(t[0],t[1]))).then(r=>{saveTiles();return r;}), wait=ms=>new Promise(r=>setTimeout(()=>r(null),ms));
+  const tr=await Promise.race([tl,wait(waitMs)]), wr=await Promise.race([wmem[wk],wait(waitMs?8000:0)]);
+  const tiles=(tr||[]).filter(x=>x.status==='fulfilled').map(x=>x.value), a=buildArea(tiles);
+  return {pois:mergePois(a.pois,wr||[]),parks:a.parks,parksOk:!!tr&&tiles.length===list.length}; }
 const PARKK=['park','garden','nature_reserve'];
-function inParks(parks,p){ return parks.some(g=>{ let c=false; for(const ring of g.rings) for(let i=0;i<ring.length-1;i++){const a=ring[i],b=ring[i+1];
-  if((a[0]>p[0])!==(b[0]>p[0])&&p[1]<(b[1]-a[1])*(p[0]-a[0])/(b[0]-a[0])+a[1]) c=!c;} return c; }); }
+function inParks(parks,p){ return parks.some(g=>g.rings.some(r=>ringIn(r,p))); }
 function snapPoi(pt,reach,used,avoid){ let best=null,bs=0;
   for(const q of S.snap){ if(used.has(q)||avoid.some(a=>hav(q.p,a)<150)) continue; const d=hav(q.p,pt); if(d>reach) continue;
     const s=q.w*(1-0.6*d/reach); if(s>bs){bs=s;best=q;} }
@@ -467,14 +474,14 @@ function parkCuts(r,geoms){ const lat0=r.coords[0][0], sm=[], cuts=[], names=[];
   for(const g of geoms){ const rings=g.rings.map(ring=>ring.map(p=>toXY(p,lat0))), all=[].concat(...rings);
     const x0=Math.min(...all.map(p=>p[0])),x1=Math.max(...all.map(p=>p[0])),y0=Math.min(...all.map(p=>p[1])),y1=Math.max(...all.map(p=>p[1]));
     if(Math.max(x1-x0,y1-y0)<50) continue;
-    const inP=p=>{ if(p[0]<x0||p[0]>x1||p[1]<y0||p[1]>y1) return false; let c=false;
-      for(const ring of rings) for(let i=0;i<ring.length-1;i++){const a=ring[i],b=ring[i+1]; if((a[1]>p[1])!==(b[1]>p[1])&&p[0]<(b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0]) c=!c;} return c; };
+    const inP=p=>{ if(p[0]<x0||p[0]>x1||p[1]<y0||p[1]>y1) return false;
+      return rings.some(ring=>{ let c=false; for(let i=0,j=ring.length-1;i<ring.length;j=i++){const a=ring[i],b=ring[j]; if((a[1]>p[1])!==(b[1]>p[1])&&p[0]<(b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0]) c=!c;} return c; }); };
     if(fixed.some(inP)) continue;
     const runs=[]; let cur=null; sm.forEach(x=>{ if(inP(x.xy)){ if(cur&&x.at-cur[1]<60) cur[1]=x.at; else runs.push(cur=[x.at,x.at]); } });
     const big=runs.filter(u=>u[1]-u[0]>=30); if(!big.length) continue;
     const h=hull(all); if(h.length<3) continue; const c=[h.reduce((a,p)=>a+p[0],0)/h.length,h.reduce((a,p)=>a+p[1],0)/h.length];
     const out=h.map(p=>{const dx=p[0]-c[0],dy=p[1]-c[1],l=Math.hypot(dx,dy)||1;return [p[0]+dx/l*25,p[1]+dy/l*25];});
-    if(g.name&&!names.includes(g.name)) names.push(g.name);
+    { const nm=g.name||'un parque'; if(!names.includes(nm)) names.push(nm); }
     big.forEach(u=>{ inside+=u[1]-u[0]; const a1=Math.max(0,u[0]-25),a2=Math.min(r.dist,u[1]+25), E=sm.find(x=>x.at>=a1).xy, X=(sm.find(x=>x.at>=a2)||sm[sm.length-1]).xy;
       const near=q=>out.reduce((b,p,i)=>Math.hypot(p[0]-q[0],p[1]-q[1])<Math.hypot(out[b][0]-q[0],out[b][1]-q[1])?i:b,0), i=near(E), j=near(X), n=out.length, fw=[], bw=[];
       for(let k=i,z=0;z<=n;k=(k+1)%n,z++){fw.push(out[k]);if(k===j)break;} for(let k=i,z=0;z<=n;k=(k-1+n)%n,z++){bw.push(out[k]);if(k===j)break;}
@@ -576,15 +583,15 @@ async function plan(){
   const D=targetD(), cen=[fixed.reduce((a,f)=>a+f.p[0],0)/fixed.length,fixed.reduce((a,f)=>a+f.p[1],0)/fixed.length];
   const reach=Math.min(7000,Math.max(600,Math.max(...fixed.map(f=>hav(cen,f.p)))+D*0.4));
   try{
-    const skirt=S.parkMode==='around', slow=setTimeout(()=>{S.busyMsg='Descargando los parques de la zona. Solo la primera vez; puede tardar medio minuto…';if(S.busy)render();},3500);
-    const data=await loadArea(cen,reach,skirt?50000:6000).catch(()=>({pois:[],parks:[],parksOk:false})), fav=new Set(STYLES[S.style][1]||[]); clearTimeout(slow); S.busyMsg='Trazando rutas…'; render();
+    const skirt=S.parkMode==='around', slow=setTimeout(()=>{S.busyMsg='Descargando el mapa de la zona (solo la primera vez)…';if(S.busy)render();},3500);
+    const data=await loadArea(cen,reach,skirt?25000:7000).catch(()=>({pois:[],parks:[],parksOk:false})), fav=new Set(STYLES[S.style][1]||[]); clearTimeout(slow); S.busyMsg='Trazando rutas…'; render();
     S.pois=data.pois.map(q=>({...q,w:q.w*(fav.size?(fav.has(q.kind)?1.8:0.6):1)})); S.parks=data.parks; S.parksOk=data.parksOk;
     // bordear: nada de puntos de paso dentro de un parque; los parques se tocan por su borde más cercano al inicio
-    S.snap=!skirt?S.pois:S.pois.map(q=>{ if(PARKK.includes(q.kind)){ const g=S.parks.find(x=>x.name===q.name); if(!g) return null;
+    S.snap=!skirt?S.pois:S.pois.map(q=>{ if(PARKK.includes(q.kind)){ const g=S.parks.find(x=>x.rings.some(r=>ringIn(r,q.p)))||S.parks.find(x=>x.name&&x.name===q.name); if(!g) return null;
         const pts=[].concat(...g.rings), c=[pts.reduce((a,p)=>a+p[0],0)/pts.length,pts.reduce((a,p)=>a+p[1],0)/pts.length];
         const e=pts.reduce((b,p)=>hav(p,fixed[0].p)<hav(b,fixed[0].p)?p:b,pts[0]); return {...q,p:dest(e,bearing(c,e),30)}; }
       return inParks(S.parks,q.p)?null:q; }).filter(Boolean);
-    if(skirt&&!S.parksOk) S.note='El servidor de mapas no ha respondido y no tengo los parques de esta zona, así que estas rutas podrían entrar en alguno. Sigo intentándolo de fondo: pulsa «Otras» dentro de un minuto.';
+    if(skirt&&!S.parksOk) S.note='No he podido descargar los parques de esta zona (¿poca cobertura?), así que estas rutas podrían entrar en alguno. Pulsa «Otras» para reintentarlo.';
     const {L0,out}=buildCandidates(fixed,S.seed,D); let direct=null, found=[];
     if(L0>=60){ direct=await osrm(fixed); direct.wps=fixed; direct.err=Math.abs(direct.dist-D)/D; direct.title=S.loop?'Ida y vuelta directa':'Camino directo'; direct.direct=true; }
     if(!direct||direct.dist<D*0.88){
