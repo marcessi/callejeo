@@ -38,8 +38,9 @@
   }
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;margin:0}
-@media (display-mode:standalone){html,body{min-height:100vh}}   /* iPhone como app: sin esto la página puede quedarse corta y dejar un hueco abajo */
+html{height:100%;margin:0;overflow:hidden}
+/* cuerpo fijo a la pantalla: en iPhone, si el documento llega a desplazarse, todo se corre hacia arriba y queda un hueco abajo */
+body{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:100%;margin:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.35;overflow:hidden;overscroll-behavior:none}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left}
 button:focus-visible,input:focus-visible{outline:2px solid var(--mark);outline-offset:2px}
@@ -91,7 +92,7 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .logo svg{display:block;width:100%;height:100%}
 .head h1{font-size:22px;font-weight:700;flex:1}
 .head .ghost{font-size:14px;font-weight:600;color:var(--ink);padding:8px 12px;border-radius:999px;background:var(--surface-2);white-space:nowrap}
-#body{overflow-y:auto;padding:6px 16px var(--pb);display:flex;flex-direction:column;gap:14px;-webkit-overflow-scrolling:touch}
+#body{overflow-y:auto;overscroll-behavior:contain;padding:6px 16px var(--pb);display:flex;flex-direction:column;gap:14px;-webkit-overflow-scrolling:touch}
 
 .stops{background:var(--surface-2);border-radius:18px;padding:4px 4px 4px 0;display:flex;flex-direction:column}
 .stop{display:flex;align-items:center;gap:0;min-height:52px}
@@ -941,6 +942,8 @@ $('nvoice').addEventListener('click',()=>{N.voice=!N.voice;store.set('voice',N.v
 map.on('dragstart',()=>{ if(S.mode==='nav'){N.follow=false;$('nrec').setAttribute('aria-pressed','false');} });
 
 /* ---------- arranque ---------- */
+addEventListener('scroll',()=>{ if(scrollY||scrollX) scrollTo(0,0); },{passive:true});
+document.addEventListener('focusout',()=>setTimeout(()=>scrollTo(0,0),60));
 (()=>{ const st=navigator.standalone||matchMedia('(display-mode: standalone)').matches; if(!st||!/iPhone|iPad|iPod/.test(navigator.userAgent)) return;
   const d=document.createElement('div'); d.style.cssText='position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden'; document.body.appendChild(d);
   if(d.offsetHeight<20) document.documentElement.style.setProperty('--sat','56px'); d.remove(); })();
