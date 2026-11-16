@@ -686,7 +686,7 @@ async function plan(){
     { S.busyMsg=S.avoid.length?'Evitando lo que no quieres pisar…':'Puliendo los circuitos…'; render();
       const redo=async o=>{ try{ let n=await route(o.wps,true);
           if(o.c&&Math.abs(n.dist-D)/D>0.08){ const w2=o.c.make(o.c.L0+(o.Lt-o.c.L0)*Math.min(1.6,Math.max(0.6,D/n.dist))); if(w2){ const n2=await route(w2,true).catch(()=>null); if(n2&&Math.abs(n2.dist-D)<Math.abs(n.dist-D)) n=n2; } }
-          Object.assign(n,{title:o.title,direct:o.direct,err:Math.abs(n.dist-D)/D,keys:segKeys(n.coords)}); n.hl=highlights(n); return n; }catch(e){ return o; } };
+          Object.assign(n,{title:o.title,direct:o.direct,wps:n.wps||o.wps,err:Math.abs(n.dist-D)/D,keys:segKeys(n.coords)}); n.hl=highlights(n); return n; }catch(e){ return o; } };
       found=await Promise.all(found.map(redo));
       found.sort((a,b)=>(a.direct?1:0)-(b.direct?1:0)||(1.2*a.err+4*a.keys.retrace)-(1.2*b.err+4*b.keys.retrace)); }
     await Promise.all(found.map(composition));
