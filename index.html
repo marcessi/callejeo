@@ -127,7 +127,7 @@ input[type=range]::-moz-range-track{height:8px;border-radius:4px;background:var(
 input[type=range]::-moz-range-progress{height:8px;border-radius:4px;background:var(--primary)}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;border-radius:50%;background:var(--mark);border:4px solid var(--primary);margin-top:-10px}
 input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--mark);border:4px solid var(--primary)}
-.cta{width:100%;padding:16px;border-radius:16px;background:var(--primary);color:var(--on-primary);font:700 18px var(--display);text-align:center;display:flex;justify-content:center;align-items:center;gap:10px}
+.cta{width:100%;padding:16px;line-height:1.2;border-radius:16px;background:var(--primary);color:var(--on-primary);font:700 18px var(--display);text-align:center;display:flex;justify-content:center;align-items:center;gap:10px}
 .cta:disabled{opacity:.4}
 .cta.alt{background:var(--surface-2);color:var(--ink)}
 .spin{width:18px;height:18px;border-radius:50%;border:3px solid currentColor;border-right-color:transparent;animation:sp 0.8s linear infinite}
@@ -375,6 +375,7 @@ function setPlace(target,pl){
   else if(target==='start') S.start=pl; else if(target==='end') S.end=pl; else if(target==='newvia') {S.vias.push(pl);} else S.vias[target.via]=pl;
   if(S.mode!=='plan'){S.mode='plan';S.routes=[];drawRoutes();}
   drawMarkers(); render();
+  if(S.start===pl) loadArea([pl.lat,pl.lng],1500,0).catch(()=>{});
   if(!pl.label){ pl.label='Punto en el mapa'; reverse(pl.lat,pl.lng).then(n=>{if(n){pl.label=n;if(S.home===pl)store.set('home',pl);render();}}); }
   else { const rec=store.get('recent',[]).filter(r=>r.label!==pl.label); rec.unshift({lat:pl.lat,lng:pl.lng,label:pl.label,sub:pl.sub||''}); store.set('recent',rec.slice(0,6)); }
 }
@@ -384,20 +385,22 @@ const poiCache={};
 function tfetch(url,ms=9000){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(url,{signal:c.signal}).finally(()=>clearTimeout(t));}
 const KIND={park:['Parque',3,130],garden:['Jardín',2.5,90],nature_reserve:['Espacio natural',3,150],viewpoint:['Mirador',3,60],beach:['Playa',3,120],
   attraction:['Lugar de interés',2,60],pedestrian:['Calle peatonal',1.5,45],historic:['Sitio histórico',1.5,60],wiki:['',1.2,90]};
-async function ovp(q,ms){ let err;
-  for(const host of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
-    try{ const r=await tfetch(host+'?data='+encodeURIComponent(q),ms); if(!r.ok) throw new Error('ovp '+r.status); return await r.json(); }catch(e){ err=e; } }
-  throw err; }
+const OVP=['https://overpass-api.de/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+function ovp(q,ms){ // los servidores públicos se saturan a menudo: se pregunta a varios a la vez y vale el primero que conteste bien
+  const one=async(host,delay)=>{ if(delay) await new Promise(r=>setTimeout(r,delay)); const r=await tfetch(host+'?data='+encodeURIComponent(q),ms); if(!r.ok) throw new Error('ovp '+r.status);
+    const j=await r.json(); if(!Array.isArray(j.elements)||(j.remark&&!j.elements.length)) throw new Error('ovp vacío'); return j; };
+  return Promise.any([...OVP.map(h=>one(h,0)),one(OVP[0],4000),one(OVP[0],10000)]); }
 async function overpass(c,R){
   const a=`(around:${Math.round(R)},${c[0].toFixed(5)},${c[1].toFixed(5)})`, pk='["leisure"~"^(park|garden|nature_reserve)$"]["name"]';
-  const q=`[out:json][timeout:15];(way${pk}${a};relation${pk}${a};)->.p;(.p;node["tourism"~"^(viewpoint|attraction)$"]${a};way["tourism"="attraction"]["name"]${a};way["highway"="pedestrian"]["name"]${a};node["historic"]["name"]${a};way["natural"="beach"]${a};);out center tags 220;.p out geom;`;
-  const j=await ovp(q,17000), pois=[], parks=[];
+  const q=`[out:json][timeout:25];(way${pk}${a};relation${pk}${a};);out geom;(node["tourism"~"^(viewpoint|attraction)$"]${a};way["tourism"="attraction"]["name"]${a};way["highway"="pedestrian"]["name"]${a};node["historic"]["name"]${a};way["natural"="beach"]${a};);out center tags 400;`;
+  const j=await ovp(q,28000), pois=[], parks=[], r5=v=>+v.toFixed(5);
   j.elements.forEach(e=>{ const t=e.tags||{};
-    if(e.geometry||(e.members&&e.members.some(m=>m.geometry))){ const rings=(e.geometry?[e.geometry]:e.members.filter(m=>m.geometry).map(m=>m.geometry)).map(g=>g.filter(Boolean).map(p=>[p.lat,p.lon])).filter(g=>g.length>1);
-      if(rings.length) parks.push({name:t.name||'',rings}); return; }
+    if(e.geometry||(e.members&&e.members.some(m=>m.geometry))){ const rings=(e.geometry?[e.geometry]:e.members.filter(m=>m.geometry).map(m=>m.geometry)).map(g=>g.filter(Boolean).map(p=>[r5(p.lat),r5(p.lon)])).filter(g=>g.length>1);
+      if(!rings.length||!KIND[t.leisure]) return; const pts=[].concat(...rings);
+      parks.push({name:t.name||'',rings}); pois.push({p:[r5(pts.reduce((x,p)=>x+p[0],0)/pts.length),r5(pts.reduce((x,p)=>x+p[1],0)/pts.length)],name:t.name||KIND[t.leisure][0],kind:t.leisure,w:KIND[t.leisure][1]}); return; }
     const lat=e.lat!=null?e.lat:(e.center&&e.center.lat),lon=e.lon!=null?e.lon:(e.center&&e.center.lon); if(lat==null) return;
-    const kind=[t.leisure,t.natural==='beach'&&'beach',t.tourism,t.highway==='pedestrian'&&'pedestrian',t.historic&&'historic'].find(k=>k&&KIND[k]); if(!kind) return;
-    pois.push({p:[lat,lon],name:t.name||KIND[kind][0],kind,w:KIND[kind][1]}); });
+    const kind=[t.natural==='beach'&&'beach',t.tourism,t.highway==='pedestrian'&&'pedestrian',t.historic&&'historic'].find(k=>k&&KIND[k]); if(!kind) return;
+    pois.push({p:[r5(lat),r5(lon)],name:t.name||KIND[kind][0],kind,w:KIND[kind][1]}); });
   return {pois,parks};
 }
 async function wiki(lang,c,R){
@@ -405,13 +408,24 @@ async function wiki(lang,c,R){
   const r=await tfetch(u); if(!r.ok) throw new Error('wiki'); const j=await r.json(), pages=(j.query&&j.query.pages)||{};
   return Object.values(pages).filter(p=>p.thumbnail&&p.coordinates&&p.coordinates[0]&&!/\.svg/i.test(p.thumbnail.source)).map(p=>({p:[p.coordinates[0].lat,p.coordinates[0].lon],name:p.title,kind:'wiki',w:KIND.wiki[1],img:p.thumbnail.source,url:`https://${lang}.wikipedia.org/?curid=${p.pageid}`}));
 }
-async function loadPois(c,R){
-  const key=c.map(v=>v.toFixed(2)).join()+'|'+Math.round(R/1000); if(poiCache[key]) return poiCache[key];
-  const res=await Promise.allSettled([overpass(c,R),wiki('es',c,R),wiki('ca',c,R)]), all=[], ok=res[0].status==='fulfilled';
-  [ok?res[0].value.pois:[],res[1].status==='fulfilled'?res[1].value:[],res[2].status==='fulfilled'?res[2].value:[]].forEach(list=>list.forEach(p=>{
+/* Datos de la zona (sitios, fotos y contornos de parques). Se guardan 30 días en el móvil: la primera vez en una zona tarda, luego es inmediato. */
+const area={mem:[],fly:null};
+function mergePois(ov,wikis){ const all=[]; [ov,...wikis].forEach(list=>list.forEach(p=>{
     const dup=all.find(q=>(q.kind==='wiki'||p.kind==='wiki')?hav(q.p,p.p)<70:(q.name===p.name&&hav(q.p,p.p)<400));
-    if(dup){ if(p.img&&!dup.img){dup.img=p.img;dup.url=p.url;dup.w+=0.5;} else if(dup.kind==='wiki'&&p.kind!=='wiki'){dup.kind=p.kind;dup.w=p.w+0.5;dup.name=p.name;} } else all.push(p); }));
-  const out={pois:all,parks:ok?res[0].value.parks:[],parksOk:ok}; if(res.some(x=>x.status==='fulfilled')) poiCache[key]=out; return out;
+    if(dup){ if(p.img&&!dup.img){dup.img=p.img;dup.url=p.url;dup.w+=0.5;} } else all.push({...p}); })); return all; }
+function areaGet(c,reach){ return area.mem.concat(store.get('areas',[])).find(e=>Date.now()-e.t<30*864e5&&hav(c,e.c)+reach<=e.R+50); }
+function areaPut(e){ area.mem.unshift(e); const old=store.get('areas',[]).filter(o=>hav(o.c,e.c)>300||o.R>e.R);
+  for(let n=3;n>=0;n--){ try{ localStorage.setItem('callejeo.areas',JSON.stringify([e,...old.slice(0,n)])); return; }catch(x){} } }
+async function loadArea(c,reach,waitMs){
+  const hit=areaGet(c,reach); if(hit) return hit;
+  if(!area.fly||hav(area.fly.c,c)+reach>area.fly.R+50){ const f={c,R:Math.min(6000,Math.max(2500,reach*1.25))};
+    f.ov=overpass(c,f.R).then(v=>{f.ovv=v;},()=>{});
+    f.wk=Promise.allSettled([wiki('es',c,f.R),wiki('ca',c,f.R)]).then(r=>{f.wkv=r.filter(x=>x.status==='fulfilled').map(x=>x.value);});
+    f.all=Promise.all([f.ov,f.wk]).then(()=>{ if(f.ovv) areaPut({c,R:f.R,t:Date.now(),pois:mergePois(f.ovv.pois,f.wkv||[]),parks:f.ovv.parks,parksOk:true}); if(area.fly===f) area.fly=null; });
+    area.fly=f; }
+  const f=area.fly, wait=ms=>new Promise(r=>setTimeout(r,ms));
+  await Promise.race([f.all,wait(waitMs)]); await Promise.race([f.wk,wait(waitMs?9000:0)]);
+  return areaGet(c,reach)||{pois:mergePois(f.ovv?f.ovv.pois:[],f.wkv||[]),parks:f.ovv?f.ovv.parks:[],parksOk:!!f.ovv};
 }
 const PARKK=['park','garden','nature_reserve'];
 function inParks(parks,p){ return parks.some(g=>{ let c=false; for(const ring of g.rings) for(let i=0;i<ring.length-1;i++){const a=ring[i],b=ring[i+1];
@@ -553,19 +567,20 @@ async function solve(c,D){
 }
 async function plan(){
   if(S.busy) return; const end=S.loop?S.start:S.end; if(!S.start||!end){toast('Elige primero dónde empiezas'+(S.loop?'':' y dónde acabas')+'.');return;}
-  S.busy=true; S.note=''; render();
+  S.busy=true; S.note=''; S.busyMsg=''; render();
   const fixed=[{p:[S.start.lat,S.start.lng],kind:'start',label:S.start.label},...S.vias.map(v=>({p:[v.lat,v.lng],kind:'via',label:v.label})),{p:[end.lat,end.lng],kind:'end',label:end.label}];
   const D=targetD(), cen=[fixed.reduce((a,f)=>a+f.p[0],0)/fixed.length,fixed.reduce((a,f)=>a+f.p[1],0)/fixed.length];
   const reach=Math.min(7000,Math.max(600,Math.max(...fixed.map(f=>hav(cen,f.p)))+D*0.4));
   try{
-    const data=await loadPois(cen,reach).catch(()=>({pois:[],parks:[],parksOk:false})), fav=new Set(STYLES[S.style][1]||[]), skirt=S.parkMode==='around';
+    const skirt=S.parkMode==='around', slow=setTimeout(()=>{S.busyMsg='Descargando parques y sitios de la zona (solo la primera vez)…';if(S.busy)render();},3500);
+    const data=await loadArea(cen,reach,skirt?27000:7000).catch(()=>({pois:[],parks:[],parksOk:false})), fav=new Set(STYLES[S.style][1]||[]); clearTimeout(slow); S.busyMsg='Trazando rutas…'; render();
     S.pois=data.pois.map(q=>({...q,w:q.w*(fav.size?(fav.has(q.kind)?1.8:0.6):1)})); S.parks=data.parks; S.parksOk=data.parksOk;
     // bordear: nada de puntos de paso dentro de un parque; los parques se tocan por su borde más cercano al inicio
     S.snap=!skirt?S.pois:S.pois.map(q=>{ if(PARKK.includes(q.kind)){ const g=S.parks.find(x=>x.name===q.name); if(!g) return null;
         const pts=[].concat(...g.rings), c=[pts.reduce((a,p)=>a+p[0],0)/pts.length,pts.reduce((a,p)=>a+p[1],0)/pts.length];
         const e=pts.reduce((b,p)=>hav(p,fixed[0].p)<hav(b,fixed[0].p)?p:b,pts[0]); return {...q,p:dest(e,bearing(c,e),30)}; }
       return inParks(S.parks,q.p)?null:q; }).filter(Boolean);
-    if(skirt&&!S.parksOk) S.note='No he podido cargar los parques de la zona, así que no puedo asegurar que estas rutas no entren en alguno.';
+    if(skirt&&!S.parksOk) S.note='Los servidores de mapas no han respondido a tiempo y no tengo los parques de esta zona, así que no puedo asegurar que estas rutas no entren en alguno. Vuelve a pulsar «Otras» en un momento.';
     const {L0,out}=buildCandidates(fixed,S.seed,D); let direct=null, found=[];
     if(L0>=60){ direct=await osrm(fixed); direct.wps=fixed; direct.err=Math.abs(direct.dist-D)/D; direct.title=S.loop?'Ida y vuelta directa':'Camino directo'; direct.direct=true; }
     if(!direct||direct.dist<D*0.88){
@@ -668,7 +683,7 @@ function render(){
       <div class="kind"><div class="pace"><span class="eb">Parques</span><div class="seg sm" role="group" aria-label="Qué hacer con los parques"><button data-park="cross" aria-pressed="${S.parkMode!=='around'}">Entrar</button><button data-park="around" aria-pressed="${S.parkMode==='around'}">Solo bordear</button></div></div>
         <p class="hint">${S.parkMode==='around'?'Las rutas pasan junto a los parques, pero no se meten dentro.':'Las rutas pueden cruzar parques por dentro.'}</p></div>
       <p class="hint">Toca el mapa para poner un punto. Arrastra un marcador para afinarlo.</p>
-      <div class="dock"><button class="cta" id="go" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> Buscando sitios bonitos…':'Proponer paseos'}</button></div>`;
+      <div class="dock"><button class="cta" id="go" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> '+(S.busyMsg||'Buscando sitios bonitos…'):'Proponer paseos'}</button></div>`;
   } else {
     $('title').textContent='Elige tu paseo';
     const r=S.routes[S.sel];
