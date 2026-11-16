@@ -139,6 +139,8 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .box{border:1.5px solid var(--line);border-radius:18px;padding:14px 14px 12px}
 .pace{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .seg.sm button{padding:6px 11px;font-size:13px}
+.seg.full{display:flex} .seg.full button{flex:1;text-align:center;padding:8px 4px}
+.kind{display:flex;flex-direction:column;gap:7px}
 .mchip{padding:8px 13px 8px 10px;border-radius:999px;border:1.5px solid var(--line);font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:7px}
 .mchip i{width:10px;height:10px;border-radius:50%;background:var(--mc)}
 .mchip[aria-pressed="true"]{border-color:var(--mc);background:color-mix(in srgb,var(--mc) 15%,var(--surface))}
@@ -304,10 +306,14 @@ let toastT; function toast(msg,ms=3500){const t=$('toast');t.textContent=msg;t.h
 
 /* ---------- estado ---------- */
 const COLORS = ['#D7263D','#1E9E5A','#2B6FD6','#E07B00'];
-const S = {mode:'plan',start:null,end:null,vias:[],loop:store.get('loop',true),minutes:store.get('minutes',45),unit:store.get('unit','min'),km:store.get('km',4),home:store.get('home',null),mood:store.get('mood',[]),pois:[],pace:store.get('pace',4.8),
+const S = {mode:'plan',start:null,end:null,vias:[],loop:store.get('loop',true),minutes:store.get('minutes',45),unit:store.get('unit','min'),km:store.get('km',4),home:store.get('home',null),style:store.get('style','variado'),pois:[],pace:store.get('pace',4.8),
   routes:[],sel:0,seed:0,busy:false,note:'',picking:null,me:null};
 const targetD = () => S.unit==='km' ? S.km*1000 : S.minutes/60*S.pace*1000;
-const MOODS={verde:['Verde',['park','garden','nature_reserve','beach']],vistas:['Vistas',['viewpoint','beach','nature_reserve']],historia:['Historia',['historic','attraction','wiki','pedestrian']]};
+const STYLES={variado:['Variado',null,'Un poco de todo: lo más agradable que haya cerca.'],
+  verde:['Verde',['park','garden','nature_reserve','beach'],'Parques, jardines y zonas naturales siempre que se pueda.'],
+  urbano:['Urbano',['pedestrian','historic','attraction','wiki'],'Calles peatonales, plazas y sitios con historia.'],
+  vistas:['Vistas',['viewpoint','beach','nature_reserve'],'Miradores, mar y sitios abiertos.']};
+if(!STYLES[S.style]) S.style='variado';
 const PACES = [[4,'Tranquilo'],[4.8,'Normal'],[5.6,'Ligero']];
 
 /* ---------- mapa ---------- */
@@ -383,7 +389,7 @@ async function overpass(c,R){
   const r=await tfetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q),11000); if(!r.ok) throw new Error('ovp'); const j=await r.json();
   return j.elements.map(e=>{const t=e.tags||{},lat=e.lat!=null?e.lat:(e.center&&e.center.lat),lon=e.lon!=null?e.lon:(e.center&&e.center.lon); if(lat==null) return null;
     const kind=[t.leisure,t.natural==='beach'&&'beach',t.tourism,t.highway==='pedestrian'&&'pedestrian',t.historic&&'historic'].find(k=>k&&KIND[k]); if(!kind) return null;
-    return {p:[lat,lon],name:t.name||KIND[kind][0],kind,w:KIND[kind][1]};}).filter(Boolean);
+    return {p:[lat,lon],name:t.name||KIND[kind][0],kind,w:KIND[kind][1],osm:e.type==='node'?null:{type:e.type,id:e.id}};}).filter(Boolean);
 }
 async function wiki(lang,c,R){
   const u=`https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch&ggscoord=${c[0].toFixed(5)}%7C${c[1].toFixed(5)}&ggsradius=${Math.round(Math.min(10000,Math.max(500,R)))}&ggslimit=50&prop=coordinates%7Cpageimages&piprop=thumbnail&pithumbsize=480&pilimit=50&colimit=50`;
@@ -408,7 +414,7 @@ function highlights(r){ const lat0=r.coords[0][0], xy=r.coords.map(c=>toXY(c,lat
       if(Math.min(a[0],b[0])-tol>z[0]||Math.max(a[0],b[0])+tol<z[0]||Math.min(a[1],b[1])-tol>z[1]||Math.max(a[1],b[1])+tol<z[1]) continue;
       const dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy,t=l2?Math.max(0,Math.min(1,((z[0]-a[0])*dx+(z[1]-a[1])*dy)/l2)):0;
       if(Math.hypot(a[0]+t*dx-z[0],a[1]+t*dy-z[1])<=tol){at=r.cum[i];break;} }
-    if(at>=0) out.push({p:q.p,name:q.name,kind:q.kind,w:q.w,img:q.img,url:q.url,at}); }
+    if(at>=0) out.push({p:q.p,name:q.name,kind:q.kind,w:q.w,img:q.img,url:q.url,osm:q.osm,at}); }
   return out.sort((a,b)=>a.at-b.at); }
 async function climb(r){ try{ const n=Math.min(80,Math.max(12,Math.round(r.dist/60))), la=[],lo=[];
   for(let k=0;k<=n;k++){const t=r.dist*k/n;let i=r.cum.findIndex(c=>c>=t);if(i<0)i=r.coords.length-1;la.push(r.coords[i][0].toFixed(5));lo.push(r.coords[i][1].toFixed(5));}
@@ -418,6 +424,51 @@ async function reverseRoute(){ const r=S.routes[S.sel]; if(!r||!r.wps||S.busy) r
   try{ const w=r.wps.slice().reverse(), n=await osrm(w); Object.assign(n,{wps:w,title:r.title,color:r.color,direct:r.direct,err:r.err,keys:segKeys(n.coords),min:n.dist/1000/S.pace*60}); n.hl=highlights(n); S.routes[S.sel]=n;
     climb(n).then(()=>{if(S.mode==='results')render();}); toast('Sentido invertido'); }catch(e){toast('No se ha podido invertir la ruta.');}
   S.busy=false; render(); drawRoutes(false); }
+/* ---------- variante: rodear los parques en vez de cruzarlos ---------- */
+const PARKK=['park','garden','nature_reserve'];
+function hull(pts){ pts=pts.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]); const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]), lo=[], up=[];
+  for(const p of pts){while(lo.length>1&&cr(lo[lo.length-2],lo[lo.length-1],p)<=0)lo.pop();lo.push(p);}
+  for(const p of pts.slice().reverse()){while(up.length>1&&cr(up[up.length-2],up[up.length-1],p)<=0)up.pop();up.push(p);}
+  return lo.slice(0,-1).concat(up.slice(0,-1)); }
+function inHull(h,p){ for(let i=0;i<h.length;i++){const a=h[i],b=h[(i+1)%h.length]; if((b[0]-a[0])*(p[1]-a[1])-(b[1]-a[1])*(p[0]-a[0])<0) return false;} return true; }
+async function parkGeoms(list){ const w=list.filter(o=>o.type==='way').map(o=>o.id), rl=list.filter(o=>o.type==='relation').map(o=>o.id);
+  const q=`[out:json][timeout:8];(${w.length?`way(id:${w.join()});`:''}${rl.length?`relation(id:${rl.join()});`:''});out geom;`;
+  const r=await tfetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q),11000); if(!r.ok) throw new Error('ovp'); const j=await r.json();
+  return j.elements.map(e=>{const g=e.geometry||[].concat(...(e.members||[]).filter(m=>m.role!=='inner'&&m.geometry).map(m=>m.geometry)); return g.filter(Boolean).map(n=>[n.lat,n.lon]);}).filter(x=>x.length>2); }
+async function aroundParks(){ const r=S.routes[S.sel]; if(!r||S.busy||r.around) return;
+  const parks=(r.hl||[]).filter(h=>PARKK.includes(h.kind)&&h.osm); if(!parks.length){toast('Esta ruta no cruza ningún parque.');return;}
+  S.busy=true; render();
+  try{ const lat0=r.coords[0][0], fromXY=q=>[q[1]/110540,q[0]/(Math.cos(rad(lat0))*111320)], geoms=await parkGeoms(parks.map(h=>h.osm)), sm=[];
+    for(let i=0;i<r.coords.length-1;i++){const a=r.coords[i],b=r.coords[i+1],d=r.cum[i+1]-r.cum[i],n=Math.max(1,Math.ceil(d/15));
+      for(let k=0;k<n;k++){const t=k/n; sm.push({at:r.cum[i]+d*t,xy:toXY([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],lat0)});}}
+    sm.push({at:r.dist,xy:toXY(r.coords[r.coords.length-1],lat0)});
+    const fixedXY=[r.coords[0],r.coords[r.coords.length-1],...r.viaAt.map(v=>v.p)].map(p=>toXY(p,lat0)), cuts=[];
+    for(const g of geoms){ const h=hull(g.map(p=>toXY(p,lat0))); if(h.length<3) continue;
+      const c=[h.reduce((a,p)=>a+p[0],0)/h.length,h.reduce((a,p)=>a+p[1],0)/h.length];
+      const grow=m=>h.map(p=>{const dx=p[0]-c[0],dy=p[1]-c[1],l=Math.hypot(dx,dy)||1;return [p[0]+dx/l*m,p[1]+dy/l*m];});
+      if(Math.max(...h.map(p=>Math.hypot(p[0]-c[0],p[1]-c[1])))<40) continue;
+      const safe=grow(10); if(fixedXY.some(p=>inHull(safe,p))) continue;
+      const out=grow(22), runs=[]; let cur=null;
+      sm.forEach(x=>{ if(inHull(h,x.xy)){ if(cur&&x.at-cur[1]<60) cur[1]=x.at; else runs.push(cur=[x.at,x.at]); } });
+      runs.filter(u=>u[1]-u[0]>=40).forEach(u=>{ const a1=Math.max(0,u[0]-25),a2=Math.min(r.dist,u[1]+25), E=sm.find(x=>x.at>=a1).xy, X=(sm.find(x=>x.at>=a2)||sm[sm.length-1]).xy;
+        const near=q=>out.reduce((b,p,i)=>Math.hypot(p[0]-q[0],p[1]-q[1])<Math.hypot(out[b][0]-q[0],out[b][1]-q[1])?i:b,0), i=near(E), j=near(X), n=out.length, fw=[], bw=[];
+        for(let k=i,z=0;z<=n;k=(k+1)%n,z++){fw.push(out[k]);if(k===j)break;} for(let k=i,z=0;z<=n;k=(k-1+n)%n,z++){bw.push(out[k]);if(k===j)break;}
+        const len=a=>a.reduce((t,p,k)=>k?t+Math.hypot(p[0]-a[k-1][0],p[1]-a[k-1][1]):0,0), path=len(fw)<=len(bw)?fw:bw;
+        let thin=[path[0]]; path.forEach(p=>{const l=thin[thin.length-1]; if(Math.hypot(p[0]-l[0],p[1]-l[1])>=70) thin.push(p);});
+        if(thin.length>8) thin=Array.from({length:8},(_,k)=>thin[Math.round(k*(thin.length-1)/7)]);
+        cuts.push({a1,a2,pts:thin}); }); }
+    if(!cuts.length){ toast('Esta ruta ya bordea los parques sin cruzarlos.',4500); }
+    else { const inCut=at=>cuts.some(c=>at>c.a1-40&&at<c.a2+40), items=[], step=Math.max(250,r.dist/14);
+      for(let at=step;at<r.dist-step/2;at+=step){ if(!inCut(at)) items.push({at,w:{p:fromXY(sm.find(x=>x.at>=at).xy),kind:'shape'}}); }
+      r.viaAt.forEach(v=>items.push({at:v.at,w:{p:v.p,kind:'via',label:v.label||'parada'}}));
+      cuts.forEach(c=>c.pts.forEach((p,k)=>items.push({at:c.a1+(c.a2-c.a1)*(k+1)/(c.pts.length+1),w:{p:fromXY(p),kind:'shape'}})));
+      items.sort((a,b)=>a.at-b.at);
+      const w=[{p:r.coords[0],kind:'start'},...items.map(x=>x.w),{p:r.coords[r.coords.length-1],kind:'end'}], n=await osrm(w);
+      Object.assign(n,{wps:w,title:r.title,color:r.color,direct:r.direct,saved:r.saved,err:r.err,keys:segKeys(n.coords),min:n.dist/1000/S.pace*60,orig:r,around:true}); n.hl=highlights(n);
+      S.routes[S.sel]=n; climb(n).then(()=>{if(S.mode==='results')render();});
+      const d=n.dist-r.dist; toast(`Rodeando ${cuts.length===1?'el parque':cuts.length+' tramos de parque'}: ${d>=0?'+':'−'}${fmtKm(Math.abs(d))}`,4500); }
+  }catch(e){ toast('No he podido calcular la variante. Inténtalo otra vez.'); }
+  S.busy=false; render(); drawRoutes(true); }
 async function pool(items,n,fn){const out=[];let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){const k=i++;out[k]=await fn(items[k]);}}));return out;}
 
 /* ---------- rutas (OSRM a pie, datos de OpenStreetMap) ---------- */
@@ -445,7 +496,7 @@ async function osrm(wps){
       if(m.type==='depart'){ if(li===0) steps.push({at:0,text:stepText(st)[0],ang:0}); }
       else if(m.type==='arrive'){ const w=wps[li+1];
         if(li===rt.legs.length-1) steps.push({at:acc*k,text:'Has llegado',ang:0,end:true});
-        else if(w.kind==='via'){ steps.push({at:acc*k,text:'Parada: '+w.label,ang:0}); viaAt.push({p:w.p,at:acc*k}); } }
+        else if(w.kind==='via'){ steps.push({at:acc*k,text:'Parada: '+w.label,ang:0}); viaAt.push({p:w.p,at:acc*k,label:w.label}); } }
       else { const t=stepText(st); const prev=steps[steps.length-1];
         if(!(prev&&acc*k-prev.at<8&&(m.type==='new name'||m.type==='continue')&&(!m.modifier||m.modifier==='straight'))) steps.push({at:acc*k,text:t[0],ang:t[1]}); }
       acc+=st.distance; }); });
@@ -502,7 +553,7 @@ async function plan(){
   const D=targetD(), cen=[fixed.reduce((a,f)=>a+f.p[0],0)/fixed.length,fixed.reduce((a,f)=>a+f.p[1],0)/fixed.length];
   const reach=Math.min(7000,Math.max(600,Math.max(...fixed.map(f=>hav(cen,f.p)))+D*0.4));
   try{
-    const base=await loadPois(cen,reach).catch(()=>[]), fav=new Set(S.mood.flatMap(m=>MOODS[m][1]));
+    const base=await loadPois(cen,reach).catch(()=>[]), fav=new Set(STYLES[S.style][1]||[]);
     S.pois=base.map(q=>({...q,w:q.w*(fav.size?(fav.has(q.kind)?1.8:0.6):1)}));
     const {L0,out}=buildCandidates(fixed,S.seed,D); let direct=null, found=[];
     if(L0>=60){ direct=await osrm(fixed); direct.wps=fixed; direct.err=Math.abs(direct.dist-D)/D; direct.title=S.loop?'Ida y vuelta directa':'Camino directo'; direct.direct=true; }
@@ -541,7 +592,6 @@ function stopRow(cls,small,pl,target,last,removable){
     <button class="lbl" data-search='${JSON.stringify(target)}'><small>${small}</small><span class="${pl?'':'empty'}">${pl?esc(pl.label):'Toca para elegir'}</span></button>
     ${removable?`<button class="x" data-rm="${target.via}" aria-label="Quitar parada">×</button>`:''}</div>`;
 }
-const MCOL={verde:'#1E9E5A',vistas:'#2B6FD6',historia:'#C77700'};
 function weekStart(d){const x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x;}
 function statsHtml(){
   const h=store.get('hist',[]), saved=store.get('saved',[]), now=new Date(), w0=weekStart(now).getTime(), W=7*864e5;
@@ -593,7 +643,9 @@ function render(){
               :`<input type="range" id="mins" aria-label="Duración del paseo" min="15" max="180" step="5" value="${S.minutes}" style="--p:${(S.minutes-15)/165*100}%">`}
         <div class="pace"><span class="eb">Ritmo</span><div class="seg sm" role="group" aria-label="Ritmo al caminar">${PACES.map(p=>`<button data-pace="${p[0]}" aria-pressed="${S.pace===p[0]}">${p[1]}</button>`).join('')}</div></div>
       </div>
-      <div class="mood"><span class="eb">Que pase por</span>${Object.entries(MOODS).map(([k,v])=>`<button class="mchip" style="--mc:${MCOL[k]}" data-mood="${k}" aria-pressed="${S.mood.includes(k)}"><i></i>${v[0]}</button>`).join('')}</div>
+      <div class="kind"><span class="eb">Tipo de paseo</span>
+        <div class="seg full" role="group" aria-label="Tipo de paseo">${Object.entries(STYLES).map(([k,v])=>`<button data-style="${k}" aria-pressed="${S.style===k}">${v[0]}</button>`).join('')}</div>
+        <p class="hint">${STYLES[S.style][2]}</p></div>
       <p class="hint">Toca el mapa para poner un punto. Arrastra un marcador para afinarlo.</p>
       <div class="dock"><button class="cta" id="go" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> Buscando sitios bonitos…':'Proponer paseos'}</button></div>`;
   } else {
@@ -614,6 +666,7 @@ function render(){
           ${(x.hl||[]).length?`<span class="tag ok">${x.hl.length} ${x.hl.length===1?'sitio':'sitios'} de interés</span>`:''}
           ${x.saved||rt<0.06?'':`<span class="tag">Repite un ${Math.round(rt*100)} %</span>`}</span></span>
           <span class="big"><b class="num">${fmtMin(x.min)}</b><small class="num">${fmtKm(x.dist)}</small></span></div>`;}).join('')}</div>
+      ${r.around||(r.hl||[]).some(h=>PARKK.includes(h.kind)&&h.osm)?`<div class="pace"><span class="eb">Parques</span><div class="seg sm" role="group" aria-label="Qué hacer con los parques"><button data-park="cross" aria-pressed="${!r.around}">Atravesar</button><button data-park="around" aria-pressed="${!!r.around}" ${S.busy?'disabled':''}>${S.busy&&!r.around?'Calculando…':'Rodear'}</button></div></div>`:''}
       ${(r.hl||[]).some(h=>h.img)?`<h2 class="eb">En el camino</h2><div class="photos">${r.hl.map((h,i)=>h.img?`<button class="ph" data-hl="${i}"><img loading="lazy" src="${esc(h.img)}" alt=""><span>${esc(h.name)}</span></button>`:'').join('')}</div>`:''}
       <div class="sub"><button class="chipbtn out" id="more" ${S.busy?'disabled':''}>${S.busy?'Buscando…':'↻ Otras'}</button>${r.wps&&S.loop?'<button class="chipbtn out" id="rev">⇄ Invertir</button>':''}<button class="chipbtn out" id="save">☆ Guardar</button></div>
       <div class="dock"><div class="actions"><button class="cta" id="follow">▶ Empezar paseo</button><a class="cta alt" id="gm" href="${gmapsUrl(r)}" target="_blank" rel="noopener" style="text-decoration:none">Google Maps</a></div></div>`;
@@ -625,7 +678,8 @@ $('body').addEventListener('click',e=>{
   if(t.dataset.rm!=null){S.vias.splice(+t.dataset.rm,1);drawMarkers();return render();}
   if(t.dataset.pace){S.pace=+t.dataset.pace;store.set('pace',S.pace);return render();}
   if(t.dataset.sel!=null) return select(+t.dataset.sel);
-  if(t.dataset.mood){const k=t.dataset.mood;S.mood=S.mood.includes(k)?S.mood.filter(m=>m!==k):[...S.mood,k];store.set('mood',S.mood);return render();}
+  if(t.dataset.style){S.style=t.dataset.style;store.set('style',S.style);return render();}
+  if(t.dataset.park){ if(t.dataset.park==='around') return aroundParks(); const r=S.routes[S.sel]; if(r&&r.orig){S.routes[S.sel]=r.orig;render();drawRoutes(true);} return; }
   if(t.dataset.unit){S.unit=t.dataset.unit;store.set('unit',S.unit);return render();}
   if(t.dataset.hl!=null){const h=S.routes[S.sel].hl[+t.dataset.hl];if(!isWide())$('sheet').classList.add('collapsed');map.setView(h.p,Math.max(map.getZoom(),16));return showHl(h);}
   if(t.dataset.hdel!=null){const h=store.get('hist',[]);h.splice(+t.dataset.hdel,1);store.set('hist',h);return render();}
