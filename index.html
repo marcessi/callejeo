@@ -104,7 +104,8 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .stop .lbl small{display:block;font-size:12px;color:var(--muted);font-weight:500}
 .stop .lbl span{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stop .lbl span.empty{color:var(--muted);font-weight:500}
-.stop .x{flex:none;width:40px;height:40px;display:grid;place-items:center;color:var(--muted);font-size:20px;border-radius:10px}
+.stop .mv{flex:none;width:34px;height:40px;display:grid;place-items:center;font-size:17px;font-weight:600;border-radius:10px}
+.stop .x{flex:none;width:36px;height:40px;display:grid;place-items:center;color:var(--muted);font-size:20px;border-radius:10px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .chipbtn{padding:9px 13px;border-radius:999px;background:var(--surface-2);font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:6px}
 .chipbtn[aria-pressed="true"]{background:var(--primary);color:var(--on-primary)}
@@ -587,9 +588,10 @@ function gmapsUrl(r){
 }
 
 /* ---------- interfaz ---------- */
-function stopRow(cls,small,pl,target,last,removable){
+function stopRow(cls,small,pl,target,last,removable,idx,n){
   return `<div class="stop ${cls} ${last?'last':''}"><span class="dot"><b></b></span>
     <button class="lbl" data-search='${JSON.stringify(target)}'><small>${small}</small><span class="${pl?'':'empty'}">${pl?esc(pl.label):'Toca para elegir'}</span></button>
+    ${pl&&n>1&&idx>0?`<button class="mv" data-mv="${idx},-1" aria-label="Subir este punto">↑</button>`:''}${pl&&n>1&&idx<n-1?`<button class="mv" data-mv="${idx},1" aria-label="Bajar este punto">↓</button>`:''}
     ${removable?`<button class="x" data-rm="${target.via}" aria-label="Quitar parada">×</button>`:''}</div>`;
 }
 function weekStart(d){const x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x;}
@@ -615,6 +617,9 @@ function statsHtml(){
       <span class="m"><b>${esc(x.title||'Paseo')}</b><small class="num">${fmtKm(x.dist)} · ${fmtMin(x.min)} · ${d.toLocaleDateString('es-ES',{weekday:'long'})}</small></span><button class="x" data-hdel="${i}" aria-label="Borrar del historial">×</button></div>`;}).join('')}</div>`
       :'<p class="hint">Aún no hay paseos. Cuando sigas una ruta con «Empezar paseo», se apunta aquí sola al terminar.</p>'}`;
 }
+function movePoint(i,dir){ const L=[S.start,...S.vias]; if(!S.loop) L.push(S.end); const j=i+dir; if(j<0||j>=L.length) return; [L[i],L[j]]=[L[j],L[i]];
+  S.start=L[0]; if(S.loop) S.vias=L.slice(1).filter(Boolean); else {S.end=L[L.length-1];S.vias=L.slice(1,-1).filter(Boolean);}
+  drawMarkers(); render(); }
 function render(){
   document.body.classList.toggle('nav',S.mode==='nav');
   const b=$('body'); $('back').hidden=S.mode==='plan'; $('back').textContent=S.mode==='stats'?'Cerrar':'Editar'; $('act').hidden=S.mode!=='plan'; $('sheet').hidden=S.mode==='nav';
@@ -623,12 +628,12 @@ function render(){
   if(S.mode==='stats'){ $('title').textContent='Mis paseos'; b.innerHTML=statsHtml(); return; }
   if(S.mode==='plan'){
     $('title').textContent='Callejeo';
-    const km=targetD()/1000, mins=km/S.pace*60, isKm=S.unit==='km';
+    const km=targetD()/1000, mins=km/S.pace*60, isKm=S.unit==='km', nPts=1+S.vias.length+(S.loop?0:1);
     b.innerHTML=`
       <div class="stops">
-        ${stopRow('', 'Inicio', S.start, 'start', S.loop&&!S.vias.length)}
-        ${S.vias.map((v,i)=>stopRow('via','Pasar por',v,{via:i},S.loop&&i===S.vias.length-1,true)).join('')}
-        ${S.loop?'':stopRow('end','Final',S.end,'end',true)}
+        ${stopRow('', 'Inicio', S.start, 'start', S.loop&&!S.vias.length,false,0,nPts)}
+        ${S.vias.map((v,i)=>stopRow('via','Pasar por',v,{via:i},S.loop&&i===S.vias.length-1,true,i+1,nPts)).join('')}
+        ${S.loop?'':stopRow('end','Final',S.end,'end',true,false,nPts-1,nPts)}
       </div>
       <div class="row">
         ${S.start?'':'<button class="chipbtn out" id="useme">◎ Mi ubicación</button>'}
@@ -675,6 +680,7 @@ function render(){
 $('body').addEventListener('click',e=>{
   const t=e.target.closest('button,a'); if(!t) return;
   if(t.dataset.search) return openSearch(JSON.parse(t.dataset.search));
+  if(t.dataset.mv){const [i,d]=t.dataset.mv.split(',').map(Number);return movePoint(i,d);}
   if(t.dataset.rm!=null){S.vias.splice(+t.dataset.rm,1);drawMarkers();return render();}
   if(t.dataset.pace){S.pace=+t.dataset.pace;store.set('pace',S.pace);return render();}
   if(t.dataset.sel!=null) return select(+t.dataset.sel);
@@ -690,7 +696,10 @@ $('body').addEventListener('click',e=>{
   switch(t.id){
     case 'addvia': return openSearch('newvia');
     case 'home': if(!S.home) return openSearch('home'); S.start=S.home; S.loop=true; store.set('loop',true); drawMarkers(); map.setView([S.home.lat,S.home.lng],Math.max(map.getZoom(),15)); return render();
-    case 'loop': S.loop=!S.loop;store.set('loop',S.loop);drawMarkers();return render();
+    case 'loop': S.loop=!S.loop;store.set('loop',S.loop);
+      if(!S.loop&&!S.end&&S.vias.length) S.end=S.vias.pop();           // sin circular: el último punto pasa a ser el final
+      else if(S.loop&&S.end){S.vias.push(S.end);S.end=null;}             // circular: el final pasa a ser una parada más
+      drawMarkers();return render();
     case 'go': case 'more': return plan();
     case 'follow': return startNav();
     case 'rev': return reverseRoute();
