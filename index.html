@@ -541,7 +541,7 @@ async function traceEdges(r){ if(r._e&&r._ec===r.coords) return r._e;
     const dirt=!steps&&(['dirt','gravel','path','impassable'].includes(sf)||(e.unpaved&&['path','track','bridleway','mountain_bike'].includes(use))||(pk&&!/^paved/.test(sf)));   // dentro de un parque, lo que no consta como pavimentado cuenta como tierra
     return {len:(e.length||0)*1000,mid,steps,pk,cls:steps?'acera':dirt?'tierra':pk?'parque':(['pedestrian','living_street'].includes(use)||(use==='footway'&&!named))?'peatonal':'acera'}; });
   r._ec=r.coords; return r._e; }
-async function route(wps,avoid){
+async function route(wps,avoid,quick){
   const av=avoid?S.avoid:[], copt=av.includes('escaleras')?{step_penalty:900}:null;
   let r; try{ try{ r=await valhalla(wps,null,true,null,copt); }catch(e){ if(!e.soft) throw e; r=await valhalla(wps,null,false,null,copt); } }
   catch(e){ if(e.soft) throw e; r=await osrm(wps); r.fallback=true; }
@@ -557,7 +557,7 @@ async function route(wps,avoid){
     polys=rings.map(rg=>{const s=simplifyRing(rg,budget).map(p=>[p[1],p[0]]); s.push(s[0]); return s;});
     w=wps.filter(x=>x.kind!=='shape'||!(parks.some(g=>g.rings.some(rg=>ringIn(rg,x.p)))||locs.some(l=>hav(l,x.p)<60)));
     try{ r=await valhalla(w,polys,false,locs,copt); }catch(e){ break; } }
-  r=despur(r);
+  r=despur(r); if(quick){ r.wps=w; return r; }
   // apéndices: se quita el punto de paso que los provoca y se recalcula; si no hay ninguno, se recorta el tramo
   for(let k=0;k<3;k++){ const sp=findSpur(r); if(!sp||(r.viaAt||[]).some(v=>v.at>sp.a1&&v.at<sp.a2)) break;
     const sm=resample(r,15), near=x=>sm.reduce((b,q)=>hav(q.p,x.p)<hav(b.p,x.p)?q:b,sm[0]).at;
@@ -647,7 +647,7 @@ async function solve(c,D){
   let Lt=Math.max(D/(c.L0?1.35:(S.kf||1.35)),c.L0*1.12), best=null;
   for(let it=0;it<3;it++){
     const wps=c.make(Lt); if(!wps) break;
-    let r; try{r=await route(wps,false);}catch(e){break;}
+    let r; try{r=await route(wps,false,true);}catch(e){break;}
     r.wps=wps; r.err=Math.abs(r.dist-D)/D; if(!c.L0) S.kf=Math.min(2.2,Math.max(1.05,r.dist/Lt));
     if(!best||r.err<best.err){ best=r; r.c=c; r.Lt=Lt; }
     if(r.err<0.07) break;
@@ -672,7 +672,7 @@ async function plan(){
         const e=pts.reduce((b,p)=>hav(p,fixed[0].p)<hav(b,fixed[0].p)?p:b,pts[0]); return {...q,p:dest(e,bearing(c,e),30)}; }
       return inParks(S.parks,q.p)?null:q; }).filter(Boolean);
     const {L0,out}=buildCandidates(fixed,S.seed,D); let direct=null, found=[];
-    if(L0>=60){ direct=await route(fixed,false); direct.wps=fixed; direct.err=Math.abs(direct.dist-D)/D; direct.title=S.loop?'Ida y vuelta directa':'Camino directo'; direct.direct=true; }
+    if(L0>=60){ direct=await route(fixed,false,true); direct.wps=fixed; direct.err=Math.abs(direct.dist-D)/D; direct.title=S.loop?'Ida y vuelta directa':'Camino directo'; direct.direct=true; }
     if(!direct||direct.dist<D*0.88){
       found=(await pool(out,2,c=>solve(c,D))).filter(Boolean);
       found.forEach(r=>{r.keys=segKeys(r.coords);r.hl=highlights(r);r.score=1.2*r.err+4*r.keys.retrace-0.05*Math.min(7,r.hl.reduce((a,h)=>a+h.w,0));});
@@ -683,11 +683,12 @@ async function plan(){
     } else if(direct.dist>D*1.12) S.note=`Solo llegar ya son ${fmtMin(direct.dist/1000/S.pace*60)} (${fmtKm(direct.dist)}), más de lo que pedías. Te dejo el camino más corto.`;
     if(direct){direct.keys=segKeys(direct.coords);direct.hl=highlights(direct); if(!found.some(r=>similar(r.keys,direct.keys)>0.9)) found.push(direct);}
     if(!found.length) throw new Error('none');
-    if(S.avoid.length){ S.busyMsg='Evitando lo que no quieres pisar…'; render();
+    { S.busyMsg=S.avoid.length?'Evitando lo que no quieres pisar…':'Puliendo los circuitos…'; render();
       const redo=async o=>{ try{ let n=await route(o.wps,true);
           if(o.c&&Math.abs(n.dist-D)/D>0.08){ const w2=o.c.make(o.c.L0+(o.Lt-o.c.L0)*Math.min(1.6,Math.max(0.6,D/n.dist))); if(w2){ const n2=await route(w2,true).catch(()=>null); if(n2&&Math.abs(n2.dist-D)<Math.abs(n.dist-D)) n=n2; } }
           Object.assign(n,{title:o.title,direct:o.direct,err:Math.abs(n.dist-D)/D,keys:segKeys(n.coords)}); n.hl=highlights(n); return n; }catch(e){ return o; } };
-      found=await Promise.all(found.map(redo)); }
+      found=await Promise.all(found.map(redo));
+      found.sort((a,b)=>(a.direct?1:0)-(b.direct?1:0)||(1.2*a.err+4*a.keys.retrace)-(1.2*b.err+4*b.keys.retrace)); }
     await Promise.all(found.map(composition));
     const seen={}; found.forEach((r,i)=>{r.color=COLORS[i%COLORS.length]; if(r.variant) r.title=r.title.replace(/^(Vuelta|Pasando) por /,'$1 cerca de ');seen[r.title]=(seen[r.title]||0)+1; if(seen[r.title]>1) r.title=r.title.replace('Rodeo','Rodeo amplio').replace('Vuelta','Otra vuelta'); r.min=r.dist/1000/S.pace*60;
       const top=r.hl.filter(h=>h.w>=2.5).sort((a,b)=>b.w-a.w)[0]; if(top&&!r.direct){const t=(S.loop&&!S.vias.length?'Vuelta por ':'Pasando por ')+top.name; if(!found.some(o=>o.title===t)) r.title=t;} });
