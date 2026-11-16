@@ -142,6 +142,8 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .seg.sm button{padding:6px 11px;font-size:13px}
 .seg.full{display:flex} .seg.full button{flex:1;text-align:center;padding:8px 4px}
 .kind{display:flex;flex-direction:column;gap:7px}
+.prefs{display:flex;flex-direction:column;gap:14px}
+.prefs .eb b{font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted)}
 .mchip{padding:8px 13px 8px 10px;border-radius:999px;border:1.5px solid var(--line);font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:7px}
 .mchip i{width:10px;height:10px;border-radius:50%;background:var(--mc)}
 .mchip[aria-pressed="true"]{border-color:var(--mc);background:color-mix(in srgb,var(--mc) 15%,var(--surface))}
@@ -311,10 +313,10 @@ const COLORS = ['#D7263D','#1E9E5A','#2B6FD6','#E07B00'];
 const S = {mode:'plan',start:null,end:null,vias:[],loop:store.get('loop',true),minutes:store.get('minutes',45),unit:store.get('unit','min'),km:store.get('km',4),home:store.get('home',null),snap:[],parks:[],parksOk:false,style:store.get('style','variado'),parkMode:store.get('parkMode','cross'),pois:[],pace:store.get('pace',4.8),
   routes:[],sel:0,seed:0,busy:false,note:'',picking:null,me:null};
 const targetD = () => S.unit==='km' ? S.km*1000 : S.minutes/60*S.pace*1000;
-const STYLES={variado:['Variado',null,'Un poco de todo: lo más agradable que haya cerca.'],
-  verde:['Verde',['park','garden','nature_reserve','beach'],'Parques, jardines y zonas naturales siempre que se pueda.'],
-  urbano:['Urbano',['pedestrian','historic','attraction','wiki'],'Calles peatonales, plazas y sitios con historia.'],
-  vistas:['Vistas',['viewpoint','beach','nature_reserve'],'Miradores, mar y sitios abiertos.']};
+const STYLES={variado:['Variado',null,'de todo un poco'],
+  verde:['Verde',['park','garden','nature_reserve','beach'],'parques y jardines'],
+  urbano:['Urbano',['pedestrian','historic','attraction','wiki'],'plazas y sitios con historia'],
+  vistas:['Vistas',['viewpoint','beach','nature_reserve'],'miradores y mar']};
 if(!STYLES[S.style]) S.style='variado';
 const PACES = [[4,'Tranquilo'],[4.8,'Normal'],[5.6,'Ligero']];
 
@@ -701,12 +703,12 @@ function render(){
               :`<input type="range" id="mins" aria-label="Duración del paseo" min="15" max="180" step="5" value="${S.minutes}" style="--p:${(S.minutes-15)/165*100}%">`}
         <div class="pace"><span class="eb">Ritmo</span><div class="seg sm" role="group" aria-label="Ritmo al caminar">${PACES.map(p=>`<button data-pace="${p[0]}" aria-pressed="${S.pace===p[0]}">${p[1]}</button>`).join('')}</div></div>
       </div>
-      <div class="kind"><span class="eb">Tipo de paseo</span>
-        <div class="seg full" role="group" aria-label="Tipo de paseo">${Object.entries(STYLES).map(([k,v])=>`<button data-style="${k}" aria-pressed="${S.style===k}">${v[0]}</button>`).join('')}</div>
-        <p class="hint">${STYLES[S.style][2]}</p></div>
-      <div class="kind"><div class="pace"><span class="eb">Parques</span><div class="seg sm" role="group" aria-label="Qué hacer con los parques"><button data-park="cross" aria-pressed="${S.parkMode!=='around'}">Entrar</button><button data-park="around" aria-pressed="${S.parkMode==='around'}">Solo bordear</button></div></div>
-        <p class="hint">${S.parkMode==='around'?'Las rutas pasan junto a los parques, pero no se meten dentro.':'Las rutas pueden cruzar parques por dentro.'}</p></div>
-      <p class="hint">Toca el mapa para poner un punto. Arrastra un marcador para afinarlo.</p>
+      <div class="box prefs">
+        <div class="kind"><span class="eb">Tipo de paseo · <b>${STYLES[S.style][2]}</b></span>
+          <div class="seg full" role="group" aria-label="Tipo de paseo">${Object.entries(STYLES).map(([k,v])=>`<button data-style="${k}" aria-pressed="${S.style===k}">${v[0]}</button>`).join('')}</div></div>
+        <div class="pace"><span class="eb">Parques</span><div class="seg sm" role="group" aria-label="Qué hacer con los parques"><button data-park="cross" aria-pressed="${S.parkMode!=='around'}">Entrar</button><button data-park="around" aria-pressed="${S.parkMode==='around'}">Solo bordear</button></div></div>
+      </div>
+      ${S.start?'':'<p class="hint">También puedes tocar el mapa para poner un punto.</p>'}
       <div class="dock"><button class="cta" id="go" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> '+(S.busyMsg||'Buscando sitios bonitos…'):'Proponer paseos'}</button></div>`;
   } else {
     $('title').textContent='Elige tu paseo';
