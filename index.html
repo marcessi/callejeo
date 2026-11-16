@@ -307,7 +307,7 @@ let toastT; function toast(msg,ms=3500){const t=$('toast');t.textContent=msg;t.h
 
 /* ---------- estado ---------- */
 const COLORS = ['#D7263D','#1E9E5A','#2B6FD6','#E07B00'];
-const S = {mode:'plan',start:null,end:null,vias:[],loop:store.get('loop',true),minutes:store.get('minutes',45),unit:store.get('unit','min'),km:store.get('km',4),home:store.get('home',null),style:store.get('style','variado'),parkMode:store.get('parkMode','cross'),pois:[],pace:store.get('pace',4.8),
+const S = {mode:'plan',start:null,end:null,vias:[],loop:store.get('loop',true),minutes:store.get('minutes',45),unit:store.get('unit','min'),km:store.get('km',4),home:store.get('home',null),snap:[],parks:[],parksOk:false,style:store.get('style','variado'),parkMode:store.get('parkMode','cross'),pois:[],pace:store.get('pace',4.8),
   routes:[],sel:0,seed:0,busy:false,note:'',picking:null,me:null};
 const targetD = () => S.unit==='km' ? S.km*1000 : S.minutes/60*S.pace*1000;
 const STYLES={variado:['Variado',null,'Un poco de todo: lo más agradable que haya cerca.'],
@@ -384,13 +384,21 @@ const poiCache={};
 function tfetch(url,ms=9000){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(url,{signal:c.signal}).finally(()=>clearTimeout(t));}
 const KIND={park:['Parque',3,130],garden:['Jardín',2.5,90],nature_reserve:['Espacio natural',3,150],viewpoint:['Mirador',3,60],beach:['Playa',3,120],
   attraction:['Lugar de interés',2,60],pedestrian:['Calle peatonal',1.5,45],historic:['Sitio histórico',1.5,60],wiki:['',1.2,90]};
+async function ovp(q,ms){ let err;
+  for(const host of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
+    try{ const r=await tfetch(host+'?data='+encodeURIComponent(q),ms); if(!r.ok) throw new Error('ovp '+r.status); return await r.json(); }catch(e){ err=e; } }
+  throw err; }
 async function overpass(c,R){
-  const a=`(around:${Math.round(R)},${c[0].toFixed(5)},${c[1].toFixed(5)})`;
-  const q=`[out:json][timeout:8];(way["leisure"~"^(park|garden|nature_reserve)$"]["name"]${a};relation["leisure"~"^(park|garden|nature_reserve)$"]["name"]${a};node["tourism"~"^(viewpoint|attraction)$"]${a};way["tourism"="attraction"]["name"]${a};way["highway"="pedestrian"]["name"]${a};node["historic"]["name"]${a};way["natural"="beach"]${a};);out center tags 220;`;
-  const r=await tfetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q),11000); if(!r.ok) throw new Error('ovp'); const j=await r.json();
-  return j.elements.map(e=>{const t=e.tags||{},lat=e.lat!=null?e.lat:(e.center&&e.center.lat),lon=e.lon!=null?e.lon:(e.center&&e.center.lon); if(lat==null) return null;
-    const kind=[t.leisure,t.natural==='beach'&&'beach',t.tourism,t.highway==='pedestrian'&&'pedestrian',t.historic&&'historic'].find(k=>k&&KIND[k]); if(!kind) return null;
-    return {p:[lat,lon],name:t.name||KIND[kind][0],kind,w:KIND[kind][1],osm:e.type==='node'?null:{type:e.type,id:e.id}};}).filter(Boolean);
+  const a=`(around:${Math.round(R)},${c[0].toFixed(5)},${c[1].toFixed(5)})`, pk='["leisure"~"^(park|garden|nature_reserve)$"]["name"]';
+  const q=`[out:json][timeout:15];(way${pk}${a};relation${pk}${a};)->.p;(.p;node["tourism"~"^(viewpoint|attraction)$"]${a};way["tourism"="attraction"]["name"]${a};way["highway"="pedestrian"]["name"]${a};node["historic"]["name"]${a};way["natural"="beach"]${a};);out center tags 220;.p out geom;`;
+  const j=await ovp(q,17000), pois=[], parks=[];
+  j.elements.forEach(e=>{ const t=e.tags||{};
+    if(e.geometry||(e.members&&e.members.some(m=>m.geometry))){ const rings=(e.geometry?[e.geometry]:e.members.filter(m=>m.geometry).map(m=>m.geometry)).map(g=>g.filter(Boolean).map(p=>[p.lat,p.lon])).filter(g=>g.length>1);
+      if(rings.length) parks.push({name:t.name||'',rings}); return; }
+    const lat=e.lat!=null?e.lat:(e.center&&e.center.lat),lon=e.lon!=null?e.lon:(e.center&&e.center.lon); if(lat==null) return;
+    const kind=[t.leisure,t.natural==='beach'&&'beach',t.tourism,t.highway==='pedestrian'&&'pedestrian',t.historic&&'historic'].find(k=>k&&KIND[k]); if(!kind) return;
+    pois.push({p:[lat,lon],name:t.name||KIND[kind][0],kind,w:KIND[kind][1]}); });
+  return {pois,parks};
 }
 async function wiki(lang,c,R){
   const u=`https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch&ggscoord=${c[0].toFixed(5)}%7C${c[1].toFixed(5)}&ggsradius=${Math.round(Math.min(10000,Math.max(500,R)))}&ggslimit=50&prop=coordinates%7Cpageimages&piprop=thumbnail&pithumbsize=480&pilimit=50&colimit=50`;
@@ -399,14 +407,17 @@ async function wiki(lang,c,R){
 }
 async function loadPois(c,R){
   const key=c.map(v=>v.toFixed(2)).join()+'|'+Math.round(R/1000); if(poiCache[key]) return poiCache[key];
-  const res=await Promise.allSettled([overpass(c,R),wiki('es',c,R),wiki('ca',c,R)]), all=[];
-  res.forEach(x=>{ if(x.status==='fulfilled') x.value.forEach(p=>{
+  const res=await Promise.allSettled([overpass(c,R),wiki('es',c,R),wiki('ca',c,R)]), all=[], ok=res[0].status==='fulfilled';
+  [ok?res[0].value.pois:[],res[1].status==='fulfilled'?res[1].value:[],res[2].status==='fulfilled'?res[2].value:[]].forEach(list=>list.forEach(p=>{
     const dup=all.find(q=>(q.kind==='wiki'||p.kind==='wiki')?hav(q.p,p.p)<70:(q.name===p.name&&hav(q.p,p.p)<400));
-    if(dup){ if(p.img&&!dup.img){dup.img=p.img;dup.url=p.url;dup.w+=0.5;} else if(dup.kind==='wiki'&&p.kind!=='wiki'){dup.kind=p.kind;dup.w=p.w+0.5;dup.name=p.name;} } else all.push(p); }); });
-  if(res.some(x=>x.status==='fulfilled')) poiCache[key]=all; return all;
+    if(dup){ if(p.img&&!dup.img){dup.img=p.img;dup.url=p.url;dup.w+=0.5;} else if(dup.kind==='wiki'&&p.kind!=='wiki'){dup.kind=p.kind;dup.w=p.w+0.5;dup.name=p.name;} } else all.push(p); }));
+  const out={pois:all,parks:ok?res[0].value.parks:[],parksOk:ok}; if(res.some(x=>x.status==='fulfilled')) poiCache[key]=out; return out;
 }
+const PARKK=['park','garden','nature_reserve'];
+function inParks(parks,p){ return parks.some(g=>{ let c=false; for(const ring of g.rings) for(let i=0;i<ring.length-1;i++){const a=ring[i],b=ring[i+1];
+  if((a[0]>p[0])!==(b[0]>p[0])&&p[1]<(b[1]-a[1])*(p[0]-a[0])/(b[0]-a[0])+a[1]) c=!c;} return c; }); }
 function snapPoi(pt,reach,used,avoid){ let best=null,bs=0;
-  for(const q of S.pois){ if(used.has(q)||avoid.some(a=>hav(q.p,a)<150)) continue; const d=hav(q.p,pt); if(d>reach) continue;
+  for(const q of S.snap){ if(used.has(q)||avoid.some(a=>hav(q.p,a)<150)) continue; const d=hav(q.p,pt); if(d>reach) continue;
     const s=q.w*(1-0.6*d/reach); if(s>bs){bs=s;best=q;} }
   if(best){used.add(best);return {p:best.p,kind:'shape'};} return {p:pt,kind:'shape'}; }
 function highlights(r){ const lat0=r.coords[0][0], xy=r.coords.map(c=>toXY(c,lat0)), out=[];
@@ -422,7 +433,7 @@ async function climb(r){ try{ const n=Math.min(80,Math.max(12,Math.round(r.dist/
   const j=await (await tfetch(`https://api.open-meteo.com/v1/elevation?latitude=${la.join()}&longitude=${lo.join()}`,7000)).json();
   if(!Array.isArray(j.elevation)) return; let up=0,ref=j.elevation[0]; j.elevation.forEach(e=>{ if(e>ref+3){up+=e-ref;ref=e;} else if(e<ref-3) ref=e; }); r.up=Math.round(up); }catch(e){} }
 async function reverseRoute(){ const r=S.routes[S.sel]; if(!r||!r.wps||S.busy) return; S.busy=true; render();
-  try{ const w=r.wps.slice().reverse(), n=await osrm(w); Object.assign(n,{wps:w,title:r.title,color:r.color,direct:r.direct,err:r.err,keys:segKeys(n.coords),min:n.dist/1000/S.pace*60}); n.hl=highlights(n); S.routes[S.sel]=n;
+  try{ const w=r.wps.slice().reverse(), n=await osrm(w); Object.assign(n,{wps:w,title:r.title,color:r.color,direct:r.direct,err:r.err,keys:segKeys(n.coords),min:n.dist/1000/S.pace*60}); n.hl=highlights(n); n.around=r.around; n.cross=r.cross; n.left=r.left; S.routes[S.sel]=n;
     climb(n).then(()=>{if(S.mode==='results')render();}); toast('Sentido invertido'); }catch(e){toast('No se ha podido invertir la ruta.');}
   S.busy=false; render(); drawRoutes(false); }
 /* ---------- parques: detectar si la ruta los cruza (contorno real) y variante que los rodea ---------- */
@@ -430,14 +441,6 @@ function hull(pts){ pts=pts.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]); const cr=
   for(const p of pts){while(lo.length>1&&cr(lo[lo.length-2],lo[lo.length-1],p)<=0)lo.pop();lo.push(p);}
   for(const p of pts.slice().reverse()){while(up.length>1&&cr(up[up.length-2],up[up.length-1],p)<=0)up.pop();up.push(p);}
   return lo.slice(0,-1).concat(up.slice(0,-1)); }
-const parkCache={};
-async function parkGeoms(routes){ let s=90,w=180,n=-90,e=-180; routes.forEach(r=>r.coords.forEach(c=>{s=Math.min(s,c[0]);n=Math.max(n,c[0]);w=Math.min(w,c[1]);e=Math.max(e,c[1]);}));
-  s-=0.002;n+=0.002;w-=0.003;e+=0.003; const key=[s,w,n,e].map(v=>v.toFixed(3)).join(); if(parkCache[key]) return parkCache[key];
-  const bb=`(${s.toFixed(5)},${w.toFixed(5)},${n.toFixed(5)},${e.toFixed(5)})`, f='["leisure"~"^(park|garden|nature_reserve)$"]';
-  const q=`[out:json][timeout:10];(way${f}${bb};relation${f}${bb};);out geom;`;
-  const r=await tfetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q),13000); if(!r.ok) throw new Error('ovp'); const j=await r.json();
-  return parkCache[key]=j.elements.map(el=>{ const rings=(el.geometry?[el.geometry]:(el.members||[]).filter(m=>m.geometry).map(m=>m.geometry)).map(g=>g.filter(Boolean).map(p=>[p.lat,p.lon])).filter(g=>g.length>1);
-    return {name:(el.tags&&el.tags.name)||'',rings}; }).filter(g=>g.rings.length); }
 function parkCuts(r,geoms){ const lat0=r.coords[0][0], sm=[], cuts=[], names=[]; let inside=0;
   for(let i=0;i<r.coords.length-1;i++){const a=r.coords[i],b=r.coords[i+1],d=r.cum[i+1]-r.cum[i],n=Math.max(1,Math.ceil(d/12));
     for(let k=0;k<n;k++){const t=k/n; sm.push({at:r.cum[i]+d*t,xy:toXY([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],lat0)});}}
@@ -471,17 +474,6 @@ async function aroundRoute(r,geoms){ const {cuts,names,sm,lat0}=parkCuts(r,geoms
   const w=[{p:r.coords[0],kind:'start'},...items.map(x=>x.w),{p:r.coords[r.coords.length-1],kind:'end'}], n=await osrm(w);
   Object.assign(n,{wps:w,title:r.title,color:r.color,direct:r.direct,saved:r.saved,err:r.err,keys:segKeys(n.coords),min:n.dist/1000/S.pace*60,orig:r,around:true,cross:names,left:Math.round(parkCuts(n,geoms).inside)});
   n.hl=highlights(n); return n; }
-async function aroundParks(){ const r=S.routes[S.sel]; if(!r||S.busy||r.around) return; S.busy=true; render();
-  try{ const geoms=await parkGeoms(S.routes), n=await aroundRoute(r,geoms);
-    if(!n){ r.cross=[]; toast('Esta ruta no cruza ningún parque.',4500); }
-    else { S.routes[S.sel]=n; climb(n).then(()=>{if(S.mode==='results')render();}); const d=n.dist-r.dist;
-      toast(n.left>60?`No he podido evitarlo del todo: aún quedan unos ${fmtKm(n.left)} por dentro.`:`Ahora bordea ${n.cross[0]||'el parque'}: ${d>=0?'+':'−'}${fmtKm(Math.abs(d))}`,5000); }
-  }catch(e){ toast('No he podido calcular la variante. Inténtalo otra vez.'); }
-  S.busy=false; render(); drawRoutes(true); }
-async function markParks(){ try{ const list=S.routes.slice(), geoms=await parkGeoms(list);
-    for(const r of list){ const pc=parkCuts(r,geoms); r.cross=pc.cuts.length?(pc.names.length?pc.names:['un parque']):[]; }
-    if(S.parkMode==='around'){ for(const r of list){ if(!r.cross.length||r.saved) continue; const n=await aroundRoute(r,geoms).catch(()=>null), i=S.routes.indexOf(r); if(n&&i>=0&&S.mode==='results') S.routes[i]=n; } }
-    if(S.mode==='results'){ render(); drawRoutes(false); } }catch(e){} }
 async function pool(items,n,fn){const out=[];let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){const k=i++;out[k]=await fn(items[k]);}}));return out;}
 
 /* ---------- rutas (OSRM a pie, datos de OpenStreetMap) ---------- */
@@ -528,7 +520,7 @@ function buildCandidates(fixed,seed,D){
   const out=[];
   if(L0<60){ // vuelta circular pura: círculos que pasan por el inicio, hacia cuatro rumbos
     const ths=[20,110,200,290].map(b0=>(b0+seed*47)%360);
-    S.pois.filter(q=>q.w>=2.5).map(q=>({q,d:hav(P[0],q.p)})).filter(x=>x.d>D*0.1&&x.d<D*0.36).sort((a,b)=>b.q.w-a.q.w||a.d-b.d).slice(seed%3,seed%3+2).forEach(x=>ths.push(bearing(P[0],x.q.p)));
+    S.snap.filter(q=>q.w>=2.5).map(q=>({q,d:hav(P[0],q.p)})).filter(x=>x.d>D*0.1&&x.d<D*0.36).sort((a,b)=>b.q.w-a.q.w||a.d-b.d).slice(seed%3,seed%3+2).forEach(x=>ths.push(bearing(P[0],x.q.p)));
     ths.forEach(th=>{
       out.push({title:'Vuelta hacia '+compass(th),L0:0,make(Lt){const r=Lt/(2*Math.PI),c=dest(P[0],th,r),dir=seed%2?-1:1,used=new Set();
         return [fixed[0],...[1,2,3].map(k=>snapPoi(dest(c,th+180+dir*90*k,r),Math.max(150,r*0.45),used,P)),fixed[fixed.length-1]];}}); });
@@ -566,8 +558,14 @@ async function plan(){
   const D=targetD(), cen=[fixed.reduce((a,f)=>a+f.p[0],0)/fixed.length,fixed.reduce((a,f)=>a+f.p[1],0)/fixed.length];
   const reach=Math.min(7000,Math.max(600,Math.max(...fixed.map(f=>hav(cen,f.p)))+D*0.4));
   try{
-    const base=await loadPois(cen,reach).catch(()=>[]), fav=new Set(STYLES[S.style][1]||[]);
-    S.pois=base.map(q=>({...q,w:q.w*(fav.size?(fav.has(q.kind)?1.8:0.6):1)}));
+    const data=await loadPois(cen,reach).catch(()=>({pois:[],parks:[],parksOk:false})), fav=new Set(STYLES[S.style][1]||[]), skirt=S.parkMode==='around';
+    S.pois=data.pois.map(q=>({...q,w:q.w*(fav.size?(fav.has(q.kind)?1.8:0.6):1)})); S.parks=data.parks; S.parksOk=data.parksOk;
+    // bordear: nada de puntos de paso dentro de un parque; los parques se tocan por su borde más cercano al inicio
+    S.snap=!skirt?S.pois:S.pois.map(q=>{ if(PARKK.includes(q.kind)){ const g=S.parks.find(x=>x.name===q.name); if(!g) return null;
+        const pts=[].concat(...g.rings), c=[pts.reduce((a,p)=>a+p[0],0)/pts.length,pts.reduce((a,p)=>a+p[1],0)/pts.length];
+        const e=pts.reduce((b,p)=>hav(p,fixed[0].p)<hav(b,fixed[0].p)?p:b,pts[0]); return {...q,p:dest(e,bearing(c,e),30)}; }
+      return inParks(S.parks,q.p)?null:q; }).filter(Boolean);
+    if(skirt&&!S.parksOk) S.note='No he podido cargar los parques de la zona, así que no puedo asegurar que estas rutas no entren en alguno.';
     const {L0,out}=buildCandidates(fixed,S.seed,D); let direct=null, found=[];
     if(L0>=60){ direct=await osrm(fixed); direct.wps=fixed; direct.err=Math.abs(direct.dist-D)/D; direct.title=S.loop?'Ida y vuelta directa':'Camino directo'; direct.direct=true; }
     if(!direct||direct.dist<D*0.88){
@@ -578,6 +576,10 @@ async function plan(){
       if(!keep.length&&found[0]) keep.push(found[0]);
       found=keep;
     } else if(direct.dist>D*1.12) S.note=`Solo llegar ya son ${fmtMin(direct.dist/1000/S.pace*60)} (${fmtKm(direct.dist)}), más de lo que pedías. Te dejo el camino más corto.`;
+    if(skirt&&S.parks.length){ 
+      for(let i=0;i<found.length;i++){ const n=await aroundRoute(found[i],S.parks).catch(()=>null); if(n){n.err=Math.abs(n.dist-D)/D;found[i]=n;} }
+      if(direct){ const n=await aroundRoute(direct,S.parks).catch(()=>null); if(n){n.err=Math.abs(n.dist-D)/D;direct=n;} } }
+    else found.concat(direct?[direct]:[]).forEach(r=>{ r.cross=parkCuts(r,S.parks).names; });
     if(direct){direct.keys=segKeys(direct.coords);direct.hl=highlights(direct); if(!found.some(r=>similar(r.keys,direct.keys)>0.9)) found.push(direct);}
     if(!found.length) throw new Error('none');
     const seen={}; found.forEach((r,i)=>{r.color=COLORS[i%COLORS.length];seen[r.title]=(seen[r.title]||0)+1; if(seen[r.title]>1) r.title=r.title.replace('Rodeo','Rodeo amplio').replace('Vuelta','Otra vuelta'); r.min=r.dist/1000/S.pace*60;
@@ -585,7 +587,6 @@ async function plan(){
     S.routes=found; S.sel=0; S.mode='results'; S.seed++;
     $('sheet').classList.remove('collapsed'); S.busy=false; drawMarkers(); render(); drawRoutes(true);
     Promise.all(found.map(climb)).then(()=>{ if(S.mode==='results') render(); });
-    markParks();
   }catch(e){ S.busy=false; render(); toast(navigator.onLine?'No he encontrado rutas a pie entre esos puntos. Prueba a moverlos un poco.':'Sin conexión: hace falta internet para calcular rutas.',5000); }
 }
 function showHl(h){ L.popup({offset:[0,-4]}).setLatLng(h.p).setContent(`<div class="pop">${h.img?`<img src="${esc(h.img)}" alt="">`:''}<b>${esc(h.name)}</b><small>${KIND[h.kind][0]||'Lugar con artículo'}${h.url?` · <a href="${esc(h.url)}" target="_blank" rel="noopener">Wikipedia</a>`:''}</small></div>`).openOn(map); }
@@ -664,6 +665,8 @@ function render(){
       <div class="kind"><span class="eb">Tipo de paseo</span>
         <div class="seg full" role="group" aria-label="Tipo de paseo">${Object.entries(STYLES).map(([k,v])=>`<button data-style="${k}" aria-pressed="${S.style===k}">${v[0]}</button>`).join('')}</div>
         <p class="hint">${STYLES[S.style][2]}</p></div>
+      <div class="kind"><div class="pace"><span class="eb">Parques</span><div class="seg sm" role="group" aria-label="Qué hacer con los parques"><button data-park="cross" aria-pressed="${S.parkMode!=='around'}">Entrar</button><button data-park="around" aria-pressed="${S.parkMode==='around'}">Solo bordear</button></div></div>
+        <p class="hint">${S.parkMode==='around'?'Las rutas pasan junto a los parques, pero no se meten dentro.':'Las rutas pueden cruzar parques por dentro.'}</p></div>
       <p class="hint">Toca el mapa para poner un punto. Arrastra un marcador para afinarlo.</p>
       <div class="dock"><button class="cta" id="go" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> Buscando sitios bonitos…':'Proponer paseos'}</button></div>`;
   } else {
@@ -684,8 +687,7 @@ function render(){
           ${(x.hl||[]).length?`<span class="tag ok">${x.hl.length} ${x.hl.length===1?'sitio':'sitios'} de interés</span>`:''}
           ${x.saved||rt<0.06?'':`<span class="tag">Repite un ${Math.round(rt*100)} %</span>`}</span></span>
           <span class="big"><b class="num">${fmtMin(x.min)}</b><small class="num">${fmtKm(x.dist)}</small></span></div>`;}).join('')}</div>
-      ${r.around||r.cross==null||r.cross.length?`<div class="kind"><div class="pace"><span class="eb">Parques</span><div class="seg sm" role="group" aria-label="Qué hacer con los parques"><button data-park="cross" aria-pressed="${!r.around}">Atravesar</button><button data-park="around" aria-pressed="${!!r.around}" ${S.busy?'disabled':''}>${S.busy&&!r.around?'Calculando…':'Rodear'}</button></div></div>
-        ${r.cross&&r.cross.length?`<p class="hint">${r.around?(r.left>60?'Aún roza ':'Bordea ')+esc(r.cross.join(', ')):'Esta ruta cruza '+esc(r.cross.join(', '))}</p>`:''}</div>`:''}
+      ${r.cross&&r.cross.length?`<p class="${r.around&&r.left>60?'note':'hint'}">${r.around?(r.left>60?`No he podido evitarlo del todo: unos ${fmtKm(r.left)} van por dentro de ${esc(r.cross.join(', '))}.`:`Bordea ${esc(r.cross.join(', '))} sin entrar.`):`Cruza ${esc(r.cross.join(', '))}.`}</p>`:''}
       ${(r.hl||[]).some(h=>h.img)?`<h2 class="eb">En el camino</h2><div class="photos">${r.hl.map((h,i)=>h.img?`<button class="ph" data-hl="${i}"><img loading="lazy" src="${esc(h.img)}" alt=""><span>${esc(h.name)}</span></button>`:'').join('')}</div>`:''}
       <div class="sub"><button class="chipbtn out" id="more" ${S.busy?'disabled':''}>${S.busy?'Buscando…':'↻ Otras'}</button>${r.wps&&S.loop?'<button class="chipbtn out" id="rev">⇄ Invertir</button>':''}<button class="chipbtn out" id="save">☆ Guardar</button></div>
       <div class="dock"><div class="actions"><button class="cta" id="follow">▶ Empezar paseo</button><a class="cta alt" id="gm" href="${gmapsUrl(r)}" target="_blank" rel="noopener" style="text-decoration:none">Google Maps</a></div></div>`;
@@ -699,7 +701,7 @@ $('body').addEventListener('click',e=>{
   if(t.dataset.pace){S.pace=+t.dataset.pace;store.set('pace',S.pace);return render();}
   if(t.dataset.sel!=null) return select(+t.dataset.sel);
   if(t.dataset.style){S.style=t.dataset.style;store.set('style',S.style);return render();}
-  if(t.dataset.park){ S.parkMode=t.dataset.park; store.set('parkMode',S.parkMode); if(t.dataset.park==='around') return aroundParks(); const r=S.routes[S.sel]; if(r&&r.orig){S.routes[S.sel]=r.orig;render();drawRoutes(true);} return; }
+  if(t.dataset.park){S.parkMode=t.dataset.park;store.set('parkMode',S.parkMode);return render();}
   if(t.dataset.unit){S.unit=t.dataset.unit;store.set('unit',S.unit);return render();}
   if(t.dataset.hl!=null){const h=S.routes[S.sel].hl[+t.dataset.hl];if(!isWide())$('sheet').classList.add('collapsed');map.setView(h.p,Math.max(map.getZoom(),16));return showHl(h);}
   if(t.dataset.hdel!=null){const h=store.get('hist',[]);h.splice(+t.dataset.hdel,1);store.set('hist',h);return render();}
