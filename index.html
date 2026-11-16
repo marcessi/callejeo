@@ -519,6 +519,18 @@ function despur(r){ const eq=(a,b)=>Math.abs(a[0]-b[0])<1.2e-5&&Math.abs(a[1]-b[
     r.steps=r.steps.filter(s=>s.end||!inCut(s.at)).map(s=>({...s,at:s.end?nc[nc.length-1]:sh(s.at)})); r.viaAt=(r.viaAt||[]).map(v=>({...v,at:sh(v.at)}));
     r.cut=(r.cut||0)+cuts.reduce((s,q)=>s+q[3]-q[2],0); r.coords=coords; r.cum=nc; r.dist=nc[nc.length-1]||1; }
   return r; }
+/* apéndices: un tramo que sale del circuito y vuelve casi por el mismo sitio (aunque sea por la otra acera) */
+function resample(r,step){ const out=[]; let k=0; for(let at=0;at<r.dist;at+=step){ while(k<r.cum.length-2&&r.cum[k+1]<at) k++;
+    const d=(r.cum[k+1]-r.cum[k])||1,t=Math.max(0,Math.min(1,(at-r.cum[k])/d)),a=r.coords[k],b=r.coords[k+1]; out.push({at,p:[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]}); } return out; }
+function findSpur(r){ const s=resample(r,15), n=s.length; let best=null;
+  for(let i=0;i<n;i++) for(let j=n-1;j>i+3;j--){ const L=s[j].at-s[i].at; if(L>r.dist*0.5) continue; if(L<50||(best&&L<=best.L)) break; if(hav(s[i].p,s[j].p)>25) continue;
+    let ok=true; for(let k=1;i+k<j-k;k++){ if(hav(s[i+k].p,s[j-k].p)>35){ok=false;break;} } if(ok){ best={a1:s[i].at,a2:s[j].at,L}; break; } }
+  return best; }
+function cutSpan(r,a1,a2){ let i1=r.cum.findIndex(c=>c>=a1), i2=r.cum.findIndex(c=>c>=a2); if(i1<1||i2<=i1) return r; const gone=a2-a1;
+  r.coords=r.coords.slice(0,i1).concat(r.coords.slice(i2)); const nc=[0]; for(let i=1;i<r.coords.length;i++) nc.push(nc[i-1]+hav(r.coords[i-1],r.coords[i]));
+  r.cum=nc; r.dist=nc[nc.length-1]||1; r.cut=(r.cut||0)+gone;
+  r.steps=r.steps.filter(s=>s.end||s.at<a1||s.at>=a2).map(s=>({...s,at:s.end?r.dist:Math.min(r.dist,s.at>=a2?s.at-gone:s.at)}));
+  r.viaAt=(r.viaAt||[]).map(v=>({...v,at:v.at>=a2?v.at-gone:v.at})); return r; }
 /* qué tramos no gustan (según S.avoid) */
 async function traceEdges(r){ if(r._e&&r._ec===r.coords) return r._e;
   const body={encoded_polyline:enc6(r.coords),costing:'pedestrian',shape_match:'walk_or_snap',filters:{attributes:['edge.use','edge.surface','edge.unpaved','edge.length','edge.names','edge.begin_shape_index','edge.end_shape_index','shape'],action:'include'}};
@@ -533,19 +545,26 @@ async function route(wps,avoid){
   const av=avoid?S.avoid:[], copt=av.includes('escaleras')?{step_penalty:900}:null;
   let r; try{ try{ r=await valhalla(wps,null,true,null,copt); }catch(e){ if(!e.soft) throw e; r=await valhalla(wps,null,false,null,copt); } }
   catch(e){ if(e.soft) throw e; r=await osrm(wps); r.fallback=true; }
-  if(!av.length||r.fallback) return despur(r);
-  const parks=[], locs=[], fixedIn=g=>wps.some(x=>x.kind!=='shape'&&g.rings.some(rg=>ringIn(rg,x.p))); let w=wps;
-  for(let pass=0;pass<3;pass++){ let n=0;
+  if(r.fallback) return despur(r);
+  const parks=[], locs=[], fixedIn=g=>wps.some(x=>x.kind!=='shape'&&g.rings.some(rg=>ringIn(rg,x.p))); let w=wps, polys=null;
+  for(let pass=0;pass<3&&av.length;pass++){ let n=0;
     if(av.includes('tierra')||av.includes('escaleras')){ const ed=await traceEdges(r).catch(()=>[]);
       ed.forEach(e=>{ const dirt=e.cls==='tierra'&&av.includes('tierra');
         if(dirt&&e.pk){ const g=S.parks.find(x=>x.rings.some(rg=>ringIn(rg,e.mid))); if(g&&!fixedIn(g)){ if(!parks.includes(g)){parks.push(g);n++;} return; } }   // tierra dentro de un parque: se evita el parque entero
         if((dirt||(e.steps&&av.includes('escaleras')))&&locs.length<45&&!locs.some(l=>hav(l,e.mid)<4)){locs.push(e.mid);n++;} }); }
     if(!n) break;
     const rings=[].concat(...parks.map(g=>g.rings)), budget=rings.length?Math.max(5,Math.floor(96/rings.length)-1):0;
-    const polys=rings.map(rg=>{const s=simplifyRing(rg,budget).map(p=>[p[1],p[0]]); s.push(s[0]); return s;});
+    polys=rings.map(rg=>{const s=simplifyRing(rg,budget).map(p=>[p[1],p[0]]); s.push(s[0]); return s;});
     w=wps.filter(x=>x.kind!=='shape'||!(parks.some(g=>g.rings.some(rg=>ringIn(rg,x.p)))||locs.some(l=>hav(l,x.p)<60)));
     try{ r=await valhalla(w,polys,false,locs,copt); }catch(e){ break; } }
-  r.wps=w; return despur(r); }
+  r=despur(r);
+  // apéndices: se quita el punto de paso que los provoca y se recalcula; si no hay ninguno, se recorta el tramo
+  for(let k=0;k<3;k++){ const sp=findSpur(r); if(!sp||(r.viaAt||[]).some(v=>v.at>sp.a1&&v.at<sp.a2)) break;
+    const sm=resample(r,15), near=x=>sm.reduce((b,q)=>hav(q.p,x.p)<hav(b.p,x.p)?q:b,sm[0]).at;
+    const w2=w.filter((x,idx)=>idx===0||idx===w.length-1||x.kind!=='shape'||!(near(x)>sp.a1-20&&near(x)<sp.a2+20));
+    if(w2.length<w.length&&w2.length>2){ try{ const n=await valhalla(w2,polys,false,locs.length?locs:null,copt); w=w2; r=despur(n); continue; }catch(e){} }
+    cutSpan(r,sp.a1,sp.a2); }
+  r.wps=w; return r; }
 /* ---------- tipo de trayecto: de qué está hecho cada tramo (Valhalla trace_attributes + contornos de parques) ---------- */
 const SURF={acera:['Acera','#7D8A83'],peatonal:['Peatonal','#2B6FD6'],parque:['Parque (pavimentado)','#1E9E5A'],tierra:['Tierra','#B7791F']};
 function enc6(pts){ let o='',pl=0,pn=0; const e=v=>{v=v<0?~(v<<1):(v<<1);let s='';while(v>=0x20){s+=String.fromCharCode((0x20|(v&0x1f))+63);v>>=5;}return s+String.fromCharCode(v+63);};
@@ -656,7 +675,7 @@ async function plan(){
     if(L0>=60){ direct=await route(fixed,false); direct.wps=fixed; direct.err=Math.abs(direct.dist-D)/D; direct.title=S.loop?'Ida y vuelta directa':'Camino directo'; direct.direct=true; }
     if(!direct||direct.dist<D*0.88){
       found=(await pool(out,2,c=>solve(c,D))).filter(Boolean);
-      found.forEach(r=>{r.keys=segKeys(r.coords);r.hl=highlights(r);r.score=1.2*r.err+3*r.keys.retrace-0.05*Math.min(7,r.hl.reduce((a,h)=>a+h.w,0));});
+      found.forEach(r=>{r.keys=segKeys(r.coords);r.hl=highlights(r);r.score=1.2*r.err+4*r.keys.retrace-0.05*Math.min(7,r.hl.reduce((a,h)=>a+h.w,0));});
       found.sort((a,b)=>a.score-b.score);
       const keep=[]; found.forEach(r=>{ if(keep.length<3&&r.err<0.35&&!keep.some(k=>similar(k.keys,r.keys)>0.7)) keep.push(r); });
       if(!keep.length&&found[0]) keep.push(found[0]);
