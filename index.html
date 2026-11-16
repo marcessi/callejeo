@@ -319,7 +319,7 @@ let toastT; function toast(msg,ms=3500){const t=$('toast');t.textContent=msg;t.h
 
 /* ---------- estado ---------- */
 const COLORS = ['#D7263D','#7B3FD1','#0E8C8C','#E07B00','#C2185B'];
-const S = {mode:'plan',start:null,end:null,vias:[],loop:store.get('loop',true),minutes:store.get('minutes',45),unit:store.get('unit','min'),km:store.get('km',4),home:store.get('home',null),avoid:store.get('avoid',[]),snap:[],parks:[],parksOk:false,pois:[],pace:store.get('pace',4.8),
+const S = {mode:'plan',start:null,end:null,vias:[],loop:store.get('loop',true),minutes:store.get('minutes',45),unit:store.get('unit','min'),km:store.get('km',4),home:store.get('home',null),avoid:[...new Set(store.get('avoid',[]).map(k=>k==='parques'?'tierra':k))],snap:[],parks:[],parksOk:false,pois:[],pace:store.get('pace',4.8),
   routes:[],sel:0,seed:0,busy:false,note:'',picking:null,me:null};
 const targetD = () => S.unit==='km' ? S.km*1000 : S.minutes/60*S.pace*1000;
 const PACES = [[4,'Tranquilo'],[4.8,'Normal'],[5.6,'Ligero']];
@@ -524,19 +524,20 @@ async function traceEdges(r){ if(r._e&&r._ec===r.coords) return r._e;
   if(!j.edges||!j.edges.length) throw new Error('trace'); const sh=j.shape?dec6(j.shape):r.coords;
   r._e=j.edges.map(e=>{ const a=sh[Math.min(sh.length-1,e.begin_shape_index||0)], b=sh[Math.min(sh.length-1,e.end_shape_index||0)], mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
     const named=!!(e.names&&e.names.length), use=e.use||'', sf=e.surface||'', steps=use==='steps', pk=inParks(S.parks,mid);
-    const dirt=['dirt','gravel','path','impassable'].includes(sf)||(e.unpaved&&(['path','track','bridleway','mountain_bike'].includes(use)||(!named&&use==='footway'&&pk)));
-    return {len:(e.length||0)*1000,mid,steps,cls:steps?'acera':dirt?'tierra':pk?'parque':(['pedestrian','living_street'].includes(use)||(use==='footway'&&!named))?'peatonal':'acera'}; });
+    const dirt=!steps&&(['dirt','gravel','path','impassable'].includes(sf)||(e.unpaved&&['path','track','bridleway','mountain_bike'].includes(use))||(pk&&!/^paved/.test(sf)));   // dentro de un parque, lo que no consta como pavimentado cuenta como tierra
+    return {len:(e.length||0)*1000,mid,steps,pk,cls:steps?'acera':dirt?'tierra':pk?'parque':(['pedestrian','living_street'].includes(use)||(use==='footway'&&!named))?'peatonal':'acera'}; });
   r._ec=r.coords; return r._e; }
 async function route(wps,avoid){
   const av=avoid?S.avoid:[], copt=av.includes('escaleras')?{step_penalty:900}:null;
   let r; try{ try{ r=await valhalla(wps,null,true,null,copt); }catch(e){ if(!e.soft) throw e; r=await valhalla(wps,null,false,null,copt); } }
   catch(e){ if(e.soft) throw e; r=await osrm(wps); r.fallback=true; }
   if(!av.length||r.fallback) return despur(r);
-  const parks=[], locs=[]; let w=wps;
+  const parks=[], locs=[], fixedIn=g=>wps.some(x=>x.kind!=='shape'&&g.rings.some(rg=>ringIn(rg,x.p))); let w=wps;
   for(let pass=0;pass<3;pass++){ let n=0;
-    if(av.includes('parques')) parkCuts(r,S.parks).hit.forEach(g=>{ if(!parks.includes(g)){parks.push(g);n++;} });
     if(av.includes('tierra')||av.includes('escaleras')){ const ed=await traceEdges(r).catch(()=>[]);
-      ed.forEach(e=>{ if(((e.cls==='tierra'&&av.includes('tierra'))||(e.steps&&av.includes('escaleras')))&&locs.length<45&&!locs.some(l=>hav(l,e.mid)<4)){locs.push(e.mid);n++;} }); }
+      ed.forEach(e=>{ const dirt=e.cls==='tierra'&&av.includes('tierra');
+        if(dirt&&e.pk){ const g=S.parks.find(x=>x.rings.some(rg=>ringIn(rg,e.mid))); if(g&&!fixedIn(g)){ if(!parks.includes(g)){parks.push(g);n++;} return; } }   // tierra dentro de un parque: se evita el parque entero
+        if((dirt||(e.steps&&av.includes('escaleras')))&&locs.length<45&&!locs.some(l=>hav(l,e.mid)<4)){locs.push(e.mid);n++;} }); }
     if(!n) break;
     const rings=[].concat(...parks.map(g=>g.rings)), budget=rings.length?Math.max(5,Math.floor(96/rings.length)-1):0;
     const polys=rings.map(rg=>{const s=simplifyRing(rg,budget).map(p=>[p[1],p[0]]); s.push(s[0]); return s;});
@@ -544,7 +545,7 @@ async function route(wps,avoid){
     try{ r=await valhalla(w,polys,false,locs,copt); }catch(e){ break; } }
   r.wps=w; return despur(r); }
 /* ---------- tipo de trayecto: de qué está hecho cada tramo (Valhalla trace_attributes + contornos de parques) ---------- */
-const SURF={acera:['Acera','#7D8A83'],peatonal:['Peatonal','#2B6FD6'],parque:['Parque','#1E9E5A'],tierra:['Tierra','#B7791F']};
+const SURF={acera:['Acera','#7D8A83'],peatonal:['Peatonal','#2B6FD6'],parque:['Parque (pavimentado)','#1E9E5A'],tierra:['Tierra','#B7791F']};
 function enc6(pts){ let o='',pl=0,pn=0; const e=v=>{v=v<0?~(v<<1):(v<<1);let s='';while(v>=0x20){s+=String.fromCharCode((0x20|(v&0x1f))+63);v>>=5;}return s+String.fromCharCode(v+63);};
   for(const [la,lo] of pts){const a=Math.round(la*1e6),b=Math.round(lo*1e6);o+=e(a-pl)+e(b-pn);pl=a;pn=b;} return o; }
 async function composition(r){
@@ -552,8 +553,7 @@ async function composition(r){
   try{ (await traceEdges(r)).forEach(e=>{ m[e.cls]+=e.len; if(e.steps) steps++; }); }
   catch(e){ const pk=parkCuts(r,S.parks).inside; m.parque=pk; m.acera=Math.max(0,r.dist-pk); r.compRough=true; }
   const tot=Object.values(m).reduce((a,b)=>a+b,0)||1; r.comp={}; for(const k in m) r.comp[k]=m[k]/tot; r.steps_n=steps;
-  const bad=[]; if(S.avoid.includes('parques')&&r.comp.parque*r.dist>40) bad.push(fmtKm(r.comp.parque*r.dist)+' por parque');
-  if(S.avoid.includes('tierra')&&r.comp.tierra*r.dist>40) bad.push(fmtKm(r.comp.tierra*r.dist)+' de tierra');
+  const bad=[]; if(S.avoid.includes('tierra')&&r.comp.tierra*r.dist>40) bad.push(fmtKm(r.comp.tierra*r.dist)+' de tierra');
   if(S.avoid.includes('escaleras')&&steps) bad.push(steps+(steps===1?' tramo':' tramos')+' de escaleras'); r.bad=bad.join(', ');
   return r; }
 function compBar(r,big){ if(!r.comp) return ''; const parts=Object.keys(SURF).filter(k=>r.comp[k]>=0.01);
@@ -646,11 +646,10 @@ async function plan(){
     const slow=setTimeout(()=>{S.busyMsg='Descargando el mapa de la zona (solo la primera vez)…';if(S.busy)render();},3500);
     const data=await loadArea(cen,reach,9000).catch(()=>({pois:[],parks:[],parksOk:false})); clearTimeout(slow); S.busyMsg='Trazando rutas…'; render();
     S.pois=data.pois; S.parks=data.parks; S.parksOk=data.parksOk;
-    S.snap=!S.avoid.includes('parques')?S.pois:S.pois.map(q=>{ if(PARKK.includes(q.kind)){ const g=S.parks.find(x=>x.rings.some(r=>ringIn(r,q.p))); if(!g) return null;
+    S.snap=!S.avoid.includes('tierra')?S.pois:S.pois.map(q=>{ if(PARKK.includes(q.kind)){ const g=S.parks.find(x=>x.rings.some(r=>ringIn(r,q.p))); if(!g) return null;
         const pts=[].concat(...g.rings), c=[pts.reduce((a,p)=>a+p[0],0)/pts.length,pts.reduce((a,p)=>a+p[1],0)/pts.length];
         const e=pts.reduce((b,p)=>hav(p,fixed[0].p)<hav(b,fixed[0].p)?p:b,pts[0]); return {...q,p:dest(e,bearing(c,e),30)}; }
       return inParks(S.parks,q.p)?null:q; }).filter(Boolean);
-    if(S.avoid.includes('parques')&&!S.parksOk) S.note='No he podido descargar los parques de esta zona, así que alguna ruta podría entrar en uno. Pulsa «Otras» para reintentarlo.';
     const {L0,out}=buildCandidates(fixed,S.seed,D); let direct=null, found=[];
     if(L0>=60){ direct=await route(fixed,false); direct.wps=fixed; direct.err=Math.abs(direct.dist-D)/D; direct.title=S.loop?'Ida y vuelta directa':'Camino directo'; direct.direct=true; }
     if(!direct||direct.dist<D*0.88){
@@ -749,7 +748,7 @@ function render(){
               :`<input type="range" id="mins" aria-label="Duración del paseo" min="15" max="180" step="5" value="${S.minutes}" style="--p:${(S.minutes-15)/165*100}%">`}
         <div class="pace"><span class="eb">Ritmo</span><div class="seg sm" role="group" aria-label="Ritmo al caminar">${PACES.map(p=>`<button data-pace="${p[0]}" aria-pressed="${S.pace===p[0]}">${p[1]}</button>`).join('')}</div></div>
       </div>
-      <div class="mood"><span class="eb">Evitar</span>${[['parques','Parques'],['tierra','Tierra'],['escaleras','Escaleras']].map(([k,l])=>`<button class="chipbtn" data-avoid="${k}" aria-pressed="${S.avoid.includes(k)}">${l}</button>`).join('')}</div>
+      <div class="mood"><span class="eb">Evitar</span>${[['tierra','Caminos de tierra'],['escaleras','Escaleras']].map(([k,l])=>`<button class="chipbtn" data-avoid="${k}" aria-pressed="${S.avoid.includes(k)}">${l}</button>`).join('')}</div>
       ${S.start?'':'<p class="hint">También puedes tocar el mapa para poner un punto.</p>'}
       <div class="dock"><button class="cta" id="go" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> '+(S.busyMsg||'Buscando sitios bonitos…'):'Proponer paseos'}</button></div>`;
   } else {
