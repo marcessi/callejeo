@@ -905,19 +905,51 @@ function snap(p,from,to){const r=N.route,q=toXY(p,r.coords[0][0]);let best={d:In
     if(d<best.d) best={d,i,along:r.cum[i]+t*(r.cum[i+1]-r.cum[i])};}
   return best;}
 async function wake(){try{if('wakeLock' in navigator&&S.mode==='nav') N.lock=await navigator.wakeLock.request('screen');}catch(e){}}
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible') wake();});
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ wake(); if(S.mode==='nav') N.resumed=true; } else saveWalk(true); });
+/* ---------- medición del paseo real ----------
+   anchor: último punto seguro sobre la ruta. Tras un hueco (app cerrada, pantalla bloqueada) se busca dónde estás en la ruta hacia delante de ese punto;
+   si estás sobre ella, se da por hecho que la has seguido. Si el primer punto al volver es impreciso y cae fuera, queda provisional 60 s:
+   en cuanto llega un punto bueno sobre la ruta, se rehace el tramo por la ruta. */
+function fwdSnap(p,from,ahead){ const r=N.route, n=r.cum.length; let i0=r.cum.findIndex(c=>c>=from); i0=i0<0?n-2:Math.max(0,i0-1);
+  let i1=r.cum.findIndex(c=>c>from+ahead); if(i1<0) i1=n-1; return snap(p,i0,i1+1); }
+function track(p,acc,s,tol){ const r=N.route, now=Date.now(), lp=N.trk[N.trk.length-1]; if(acc>40) return s;
+  const gap=N.resumed||(N.lastT&&now-N.lastT>20000), A=N.anchor, lim=gap?Math.max(70,tol):tol;
+  if(A){ const f=fwdSnap(p,A.along-15,(now-A.t)/1000*2.5+80); if(f.d<=lim) s=f; }
+  const on=s.d<=lim; N.resumed=false;
+  if(!lp){ N.trk.push(p); N.lastT=now; if(on) N.anchor={along:s.along,i:s.i,t:now,n:1,real:0}; return s; }
+  const d=hav(lp,p); if(d<Math.max(6,acc*0.5)&&!gap) return s;
+  if(!N.t1) N.t1=now;
+  const plaus=x=>A&&x.along>=A.along-5&&x.along-A.along<=(now-A.t)/1000*2.5+60;
+  const viaRoute=()=>{ N.real+=Math.max(s.along-A.along,0); N.trk.push(...r.coords.slice(A.i+1,s.i+1),p); };
+  if(on&&N.prov&&now<N.prov.until&&plaus(s)){ N.trk.length=A.n; N.real=A.real; viaRoute(); N.prov=null; }
+  else if(on&&A&&A.n===N.trk.length&&plaus(s)&&s.along-A.along>d*1.15) viaRoute();
+  else { if(d<3000) N.real+=d; N.trk.push(p); if(gap&&A&&!on) N.prov={until:now+60000}; }
+  if(on) N.anchor={along:s.along,i:s.i,t:now,n:N.trk.length,real:N.real};
+  N.lastT=now; if(N.trkLine) N.trkLine.setLatLngs(N.trk); $('nkm').textContent=fmtKm(N.real); saveWalk(); return s; }
+/* el paseo en curso se guarda en el móvil: si iOS cierra la app en segundo plano, al abrirla se retoma */
+let swT=0;
+function saveWalk(force){ if(S.mode!=='nav'||N.done||!N.route) return; const now=Date.now(); if(!force&&now-swT<5000) return; swT=now; const r=N.route;
+  try{ localStorage.setItem('callejeo.walk',JSON.stringify({at:now,route:{coords:r.coords,steps:r.steps,viaAt:r.viaAt||[],title:r.title,color:r.color,dist:r.dist,streets:r.streets||[],wps:r.wps,comp:r.comp,steps_n:r.steps_n,up:r.up,err:r.err||0,
+      hl:(r.hl||[]).map(h=>({p:h.p,name:h.name,kind:h.kind,w:h.w,img:h.img,url:h.url,at:h.at}))},
+    N:{t0:N.t0,t1:N.t1,real:N.real,trk:N.trk,anchor:N.anchor,lastT:N.lastT,walked:N.walked,idx:N.idx,along:N.along,started:N.started}})); }catch(e){} }
+function clearWalk(){ try{ localStorage.removeItem('callejeo.walk'); }catch(e){} }
+function resumeWalk(){ const w=store.get('walk',null); if(!w) return; if(Date.now()-w.at>6*3600e3) return clearWalk();
+  const r=w.route; r.cum=[0]; for(let i=1;i<r.coords.length;i++) r.cum.push(r.cum[i-1]+hav(r.coords[i-1],r.coords[i]));
+  r.keys=segKeys(r.coords); r.min=r.dist/1000/S.pace*60; S.routes=[r]; S.sel=0; startNav(w.N); toast('Seguimos con tu paseo en curso',4000); }
+addEventListener('pagehide',()=>saveWalk(true));
 function say(t){ if(!N.voice||!('speechSynthesis' in window)) return; try{const u=new SpeechSynthesisUtterance(t);u.lang='es-ES';speechSynthesis.cancel();speechSynthesis.speak(u);}catch(e){} }
-function startNav(){
-  const r=S.routes[S.sel]; if(!r) return; askHeading();
+function startNav(resume){
+  const r=S.routes[S.sel]; if(!r) return; if(!resume) askHeading();
   if(!navigator.geolocation){toast('Este navegador no da acceso al GPS. Usa el botón de Google Maps.');return;}
-  Object.assign(N,{route:r,xy:r.coords.map(c=>toXY(c,r.coords[0][0])),idx:0,along:0,off:0,follow:true,said:-1,t0:Date.now(),done:false,started:false,fix:false,walked:0,last:null,rej:false,rec:false,real:0,trk:[],t1:0,lastOn:null,lastT:0});
-  gDone.clearLayers(); N.doneLine=L.polyline([],{color:'#8C9891',weight:6,opacity:.95,lineCap:'round',interactive:false}).addTo(gDone); N.trkLine=L.polyline([],{color:'#1E6BFF',weight:4,opacity:.9,lineCap:'round',interactive:false}).addTo(gDone); $('nfix').hidden=true; $('nstop').textContent='Terminar';
+  Object.assign(N,{route:r,xy:r.coords.map(c=>toXY(c,r.coords[0][0])),idx:0,along:0,off:0,follow:true,said:-1,t0:Date.now(),done:false,started:false,fix:false,walked:0,last:null,rej:false,rec:false,real:0,trk:[],t1:0,anchor:null,prov:null,resumed:false,lastT:0});
+  if(resume){ Object.assign(N,resume,{resumed:true}); }
+  gDone.clearLayers(); N.doneLine=L.polyline([],{color:'#8C9891',weight:6,opacity:.95,lineCap:'round',interactive:false}).addTo(gDone); N.trkLine=L.polyline([],{color:'#1E6BFF',weight:4,opacity:.9,lineCap:'round',interactive:false}).addTo(gDone); N.trkLine.setLatLngs(N.trk); $('nfix').hidden=true; $('nstop').textContent='Terminar';
   clearTimeout(N.gt); N.gt=setTimeout(()=>{ if(S.mode==='nav'&&!N.fix) $('nt').textContent='Aún no llega señal GPS. Comprueba que la ubicación está permitida para esta app y sal a cielo abierto.'; },12000);
   S.routes=[r]; S.sel=0; S.mode='nav'; render(); drawMarkers(); drawRoutes(false);
   $('ngm').href=gmapsUrl(r); $('nprog').style.setProperty('--c',r.color); $('nprog').parentNode.style.setProperty('--c',r.color);
   $('nvoice').setAttribute('aria-pressed',N.voice); $('nrec').setAttribute('aria-pressed','true'); $('navtop').classList.remove('off');
   $('nd').textContent='—'; $('nt').textContent='Buscando tu posición…'; paintNav();
-  map.setView(r.coords[0],17); wake();
+  map.setView(N.trk.length?N.trk[N.trk.length-1]:r.coords[0],17); wake(); saveWalk(true);
   N.watch=navigator.geolocation.watchPosition(onPos,err=>{ if(err.code===1){$('nt').textContent='Ubicación denegada. Actívala en Ajustes > Privacidad > Localización > Sitios web de Safari, o usa Google Maps.';toast('Sin permiso de ubicación no puedo guiarte.',6000);} },{enableHighAccuracy:true,maximumAge:2000,timeout:20000});
 }
 const walkMin=()=>Math.max(1,Math.round((Date.now()-(N.t1||N.t0))/60000));
@@ -925,7 +957,7 @@ const walkMin=()=>Math.max(1,Math.round((Date.now()-(N.t1||N.t0))/60000));
 function recordWalk(){ if(N.rec||N.real<200) return false; N.rec=true; const h=store.get('hist',[]), k=Math.max(1,Math.ceil(N.trk.length/220));
   h.unshift({t:Date.now(),dist:Math.round(N.real),min:walkMin(),title:N.route.title,plan:Math.round(N.route.dist),trk:N.trk.filter((_,i)=>i%k===0||i===N.trk.length-1).map(p=>[+p[0].toFixed(5),+p[1].toFixed(5)])});
   h.forEach((x,i)=>{ if(i>=60) delete x.trk; }); store.set('hist',h.slice(0,300)); return true; }
-function stopNav(){ if(!N.done&&recordWalk()) toast(`Paseo guardado: ${fmtKm(N.real)} en ${fmtMin(walkMin())}`,5000); if(N.watch!=null) navigator.geolocation.clearWatch(N.watch); N.watch=null; if(N.lock){N.lock.release().catch(()=>{});N.lock=null;}
+function stopNav(){ clearWalk(); if(!N.done&&recordWalk()) toast(`Paseo guardado: ${fmtKm(N.real)} en ${fmtMin(walkMin())}`,5000); if(N.watch!=null) navigator.geolocation.clearWatch(N.watch); N.watch=null; if(N.lock){N.lock.release().catch(()=>{});N.lock=null;}
   try{speechSynthesis.cancel();}catch(e){} gDone.clearLayers(); S.mode='results'; render(); drawMarkers(); drawRoutes(true); }
 function paintNav(){ const r=N.route, left=Math.max(0,r.dist-N.along), min=left/1000/S.pace*60;
   $('nprog').style.width=Math.min(100,N.along/r.dist*100)+'%'; $('nleft').textContent=fmtMin(min); $('nkm').textContent=fmtKm(N.real||0);
@@ -935,13 +967,7 @@ function onPos(pos){
   N.fix=true; N.last=p; showMe(p,pos.coords.accuracy);
   let s=snap(p,N.idx-8,N.idx+120); if(s.d>60){const g=snap(p,0,N.xy.length); if(g.d<s.d-25) s=g;}
   const tol=Math.max(45,Math.min(90,(pos.coords.accuracy||0)*1.5));
-  { // traza real. Si el punto anterior y este están sobre la ruta, se da por hecho que has seguido la ruta entre ambos (aunque el GPS haya estado parado); si no, línea recta
-    const acc=pos.coords.accuracy||99, lp=N.trk[N.trk.length-1], on=s.d<=tol, now=Date.now();
-    if(acc<=40){ if(!lp){ N.trk.push(p); N.lastOn=on?{along:s.along,i:s.i}:null; N.lastT=now; }
-      else { const d=hav(lp,p); if(d>=Math.max(6,acc*0.5)){ let add=d, mid=[];
-          if(on&&N.lastOn){ const da=s.along-N.lastOn.along; if(da>0&&da<(now-N.lastT)/1000*2.5+40){ add=Math.max(d,da); mid=r.coords.slice(N.lastOn.i+1,s.i+1); } }
-          if(add<3000){ if(!N.t1) N.t1=now; N.real+=add; N.trk.push(...mid,p); if(N.trkLine) N.trkLine.setLatLngs(N.trk); $('nkm').textContent=fmtKm(N.real); }
-          N.lastOn=on?{along:s.along,i:s.i}:null; N.lastT=now; } } } }
+  s=track(p,pos.coords.accuracy||99,s,tol);
   if(s.d>tol&&!N.started){ $('nd').textContent=fmtKm(s.d); $('nt').textContent='Camina hasta la línea marcada para empezar el paseo'; $('narrow').style.transform='rotate(0deg)'; return; }
   N.started=true;
   if(s.d>tol){ N.off++; if(N.off>=3){ $('navtop').classList.add('off'); $('nd').textContent=fmtKm(s.d); $('nt').textContent='Te has salido de la ruta. Vuelve a la línea marcada.';
@@ -962,11 +988,11 @@ async function rejoin(){ if(!N.last||N.rej||S.mode!=='nav') return; N.rej=true; 
     const sh=x=>({...x,at:x.at-cut+c.dist});
     const m={...r,coords,cum,dist:cum[cum.length-1],steps:c.steps.filter(x=>!x.end).concat(r.steps.filter(x=>x.at>cut).map(sh)),viaAt:r.viaAt.filter(x=>x.at>cut).map(sh),hl:(r.hl||[]).filter(x=>x.at>cut).map(sh)};
     if(!m.steps.length||!m.steps[m.steps.length-1].end) m.steps.push({at:m.dist,text:'Has llegado',ang:0,end:true});
-    N.walked+=N.along; N.lastOn=null; Object.assign(N,{route:m,xy:coords.map(q=>toXY(q,coords[0][0])),idx:0,along:0,off:0,said:-1,started:true});
+    N.walked+=N.along; N.anchor=null; N.prov=null; Object.assign(N,{route:m,xy:coords.map(q=>toXY(q,coords[0][0])),idx:0,along:0,off:0,said:-1,started:true});
     S.routes=[m]; drawRoutes(false); N.doneLine.setLatLngs([]); $('navtop').classList.remove('off'); $('nfix').hidden=true; $('ngm').href=gmapsUrl(m); paintNav(); $('nd').textContent='Listo'; $('nt').textContent='Sigue la línea para volver a la ruta';
   }catch(e){ toast('No he podido recalcular. Vuelve a la línea marcada.'); } N.rej=false; }
 $('nfix').addEventListener('click',rejoin);
-function finish(){ N.done=true; const mins=walkMin();
+function finish(){ N.done=true; clearWalk(); const mins=walkMin();
   { recordWalk(); $('nstop').textContent='Cerrar'; } $('nprog').style.width='100%';
   $('nd').textContent='¡Paseo completado!'; $('nt').textContent='Has caminado '+fmtKm(N.real)+' en '+fmtMin(mins); $('narrow').style.transform='rotate(0deg)'; say('Paseo completado');
   $('nleft').textContent='0 min'; $('nkm').textContent=fmtKm(N.real); }
@@ -980,9 +1006,10 @@ addEventListener('scroll',()=>{ if(scrollY||scrollX) scrollTo(0,0); },{passive:t
 document.addEventListener('focusout',()=>setTimeout(()=>scrollTo(0,0),60));
 
 render();
+resumeWalk();
 if(S.home) loadArea([S.home.lat,S.home.lng],1500,0).catch(()=>{});
 if(navigator.permissions&&navigator.permissions.query){ navigator.permissions.query({name:'geolocation'}).then(st=>{ if(st.state==='granted') locate().then(p=>{showMe([p.lat,p.lng]);
-  if(!S.start){map.setView([p.lat,p.lng],15);setPlace('start',{...p,label:null});}}).catch(()=>{}); }).catch(()=>{}); }
+  if(!S.start&&S.mode==='plan'){map.setView([p.lat,p.lng],15);setPlace('start',{...p,label:null});}}).catch(()=>{}); }).catch(()=>{}); }
 </script>
 </body>
 </html>
